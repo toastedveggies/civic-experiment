@@ -1,3 +1,32 @@
+Metadata-Version: 2.4
+Name: la-county-agendas
+Version: 0.1.0
+Summary: Scraper for LA County CEO agendas and supporting documents
+Author: Robert Morrison
+License: MIT
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: httpx>=0.25.0
+Requires-Dist: lxml>=5.0.0
+Requires-Dist: typer>=0.9.0
+Requires-Dist: pydantic>=2.0.0
+Requires-Dist: pandas>=2.0.0
+Requires-Dist: tenacity>=8.2.0
+Requires-Dist: pypdf>=3.17.0
+Requires-Dist: rich>=13.0.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.4.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.1.0; extra == "dev"
+Requires-Dist: black>=23.0.0; extra == "dev"
+Requires-Dist: ruff>=0.1.0; extra == "dev"
+Requires-Dist: mypy>=1.5.0; extra == "dev"
+
 # LA County Agendas Scraper
 
 A production-ready Python scraper that collects all agendas and supporting PDFs from the LA County CEO "Agendas" site, grouping links under their nearest meeting "group" headings, extracting dates, and producing clean CSV outputs.
