@@ -9,11 +9,16 @@ import typer
 from rich.console import Console
 from rich.logging import RichHandler
 
-from la_agendas.discovery import find_meeting_detail_links, parse_html
+from la_agendas.discovery import (
+    discover_all_pdf_links,
+    find_meeting_detail_links,
+    parse_html,
+)
 from la_agendas.extract import extract_links
 from la_agendas.fetch import Fetcher
 from la_agendas.output import (
     write_all_links_csv,
+    write_coverage_report,
     write_preview_csv,
     write_summary_csv,
     write_unlabeled_csv,
@@ -113,8 +118,12 @@ def crawl(
         console.print(f"[red]Error fetching base URL:[/red] {e}")
         sys.exit(1)
 
-    # Extract links from base page
-    console.print("[bold]Extracting PDF links...[/bold]")
+    # Global PDF sweep on base page
+    console.print("[bold]Running global PDF sweep...[/bold]")
+    all_global_links = discover_all_pdf_links(html_content, base_url)
+
+    # Extract links from base page (main pipeline)
+    console.print("[bold]Extracting PDF links (main pipeline)...[/bold]")
     all_records = extract_links(
         html_content,
         base_url,
@@ -132,6 +141,10 @@ def crawl(
         try:
             console.print(f"  Fetching: {detail_url}")
             detail_html = fetcher.fetch_html(detail_url)
+            # Global sweep on detail page
+            detail_global_links = discover_all_pdf_links(detail_html, detail_url)
+            all_global_links.extend(detail_global_links)
+            # Main pipeline extraction on detail page
             detail_records = extract_links(
                 detail_html,
                 detail_url,
@@ -142,9 +155,20 @@ def crawl(
         except Exception as e:
             logger.warning(f"Error fetching detail page {detail_url}: {e}")
 
-    # Deduplicate again after combining all records
+    # Deduplicate global links by URL
     from la_agendas.util import dedupe_records
 
+    # Deduplicate global links strictly by URL
+    seen_global_urls = set()
+    unique_global_links = []
+    for link in all_global_links:
+        url = link.get("url", "")
+        if url and url not in seen_global_urls:
+            seen_global_urls.add(url)
+            unique_global_links.append(link)
+    all_global_links = unique_global_links
+
+    # Deduplicate main pipeline records
     all_records = dedupe_records(all_records)
 
     # Log statistics
@@ -167,6 +191,29 @@ def crawl(
     write_summary_csv(all_records, outdir_path)
     write_preview_csv(all_records, outdir_path)
     write_unlabeled_csv(all_records, outdir_path)
+
+    # Write coverage report
+    console.print("[bold]Generating coverage report...[/bold]")
+    global_count, pipeline_count, missing_count = write_coverage_report(
+        all_records, all_global_links, outdir_path
+    )
+
+    # Print coverage statistics (always, but more detailed with --debug)
+    console.print(f"[green]Coverage:[/green] {pipeline_count} PDFs in pipeline, {global_count} in global sweep")
+    if missing_count > 0:
+        console.print(f"[yellow]Missing:[/yellow] {missing_count} PDFs found globally but not in pipeline")
+        missing_file = outdir_path / "missing_from_pipeline.csv"
+        console.print(f"[yellow]Missing PDFs written to:[/yellow] {missing_file}")
+    else:
+        console.print("[green]✓ Pipeline covers all global PDFs[/green]")
+
+    if debug:
+        console.print(f"[dim]Debug: Global sweep found {global_count} unique PDFs[/dim]")
+        console.print(f"[dim]Debug: Main pipeline found {pipeline_count} unique PDFs[/dim]")
+        console.print(f"[dim]Debug: Missing count: {missing_count}[/dim]")
+        if missing_count > 0:
+            missing_file = outdir_path / "missing_from_pipeline.csv"
+            console.print(f"[dim]Debug: Missing CSV location: {missing_file}[/dim]")
 
     # Download PDFs if requested
     if download_pdfs_flag and not dry_run:

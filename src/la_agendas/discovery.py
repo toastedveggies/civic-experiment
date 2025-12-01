@@ -122,3 +122,53 @@ def find_nearest_preceding_h4(element: etree._Element) -> Tuple[etree._Element, 
         current = current.getparent()
     return None
 
+
+def discover_all_pdf_links(html_content: str, base_url: str) -> List[dict]:
+    """
+    Global PDF sweep: Find ALL PDF links in raw HTML, regardless of structure.
+    Returns list of dicts with: link_text, url, filename.
+    Deduplicates strictly by URL.
+    """
+    from la_agendas.util import extract_filename, is_pdf_url, normalize_url
+
+    doc = parse_html(html_content)
+    seen_urls = set()
+    results = []
+
+    # Find all anchor tags with href
+    anchors = doc.xpath("//a[@href]")
+    for anchor in anchors:
+        href = anchor.get("href", "")
+        if not href:
+            continue
+
+        # Case-insensitive check for .pdf
+        href_lower = href.lower()
+        if ".pdf" not in href_lower:
+            continue
+
+        # Normalize to absolute URL
+        abs_url = normalize_url(base_url, href)
+
+        # Deduplicate by URL
+        if abs_url in seen_urls:
+            continue
+        seen_urls.add(abs_url)
+
+        # Extract link text
+        link_text = "".join(anchor.itertext()).strip()
+
+        # Extract filename
+        filename = extract_filename(abs_url)
+
+        results.append(
+            {
+                "link_text": link_text,
+                "url": abs_url,
+                "filename": filename,
+            }
+        )
+
+    logger.info(f"Global sweep found {len(results)} unique PDF links")
+    return results
+
