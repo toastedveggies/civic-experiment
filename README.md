@@ -1,304 +1,51 @@
-# LA County Agendas Scraper
+# Policy Tracker
 
-A production-ready Python scraper that collects all agendas and supporting PDFs from the LA County CEO "Agendas" site, grouping links under their nearest meeting "group" headings, extracting dates, and producing clean CSV outputs.
+Policy Tracker is a local-first document intelligence system for tracking agendas, attachments, and policy actions across public-sector bodies over time.
 
-## Features
+The first implementation target is Los Angeles County agenda materials. The architecture is designed so we can later add City of Los Angeles, regional agencies, and additional jurisdictions without rebuilding the pipeline.
 
-- **Comprehensive Discovery**: Extracts PDF links from main pages and meeting detail pages
-- **Smart Grouping**: Labels PDFs by nearest meeting group heading (Cluster, Deputies, Committee, Meeting)
-- **Date Parsing**: Supports multiple date formats (October 15, 2025, 10/15/2025, 10-15-2025, etc.)
-- **Flexible Filtering**: Filter by agenda-only PDFs, exclude cancellations
-- **PDF Downloads**: Optional download with rate limiting and resume support
-- **Text Extraction**: Extract full text from downloaded PDFs for downstream analysis
-- **Quality Validation**: Built-in verification of CSV outputs
-- **Robust Error Handling**: Retries with backoff, robots.txt checking, timeouts
+## What This Repo Contains
 
-## Installation
+- source registry and source onboarding docs
+- Python package for ingestion, extraction, analysis, and reporting workflows
+- SQLite-first schema and initialization scripts
+- prompt and taxonomy files for structured policy analysis
+- documentation for trend tracking and longitudinal memory
 
-### Using pip
+## Design Goals
 
-```bash
-pip install -e .
-```
+- separate collection from analysis
+- preserve raw files and extracted text
+- keep findings traceable to source documents
+- make source onboarding a first-class workflow
+- support incremental updates and longitudinal memory
+- stay local-first and operationally simple
 
-### Using uv
+## Planned V1 Scope
 
-```bash
-uv pip install -e .
-```
+- LA County source registry entries
+- local ingestion workflow for agenda documents and attachments
+- normalized document metadata and archive conventions
+- SQLite storage for documents, agenda items, findings, evidence, and trendlines
+- staged AI analysis pipeline
+- weekly digest and batch memo outputs
 
-### Development Installation
+## Repo Layout
 
-```bash
-make install
-# or
-pip install -e ".[dev]"
-```
+- `src/policy_tracker/`: Python package
+- `configs/sources/`: source registry entries
+- `docs/`: architecture, onboarding, and roadmap docs
+- `sql/`: schema and migration files
+- `prompts/`: reusable analysis prompts
+- `scripts/`: local setup and operational scripts
+- `tests/`: test suite
 
-## Quick Start
+## Local Data Strategy
 
-### Basic Crawl (Dry Run)
+Raw documents, extracted text, local databases, and logs should live outside Git or be Git-ignored. See `.gitignore` and [docs/architecture.md](/C:/Users/ramor/OneDrive/Documents/GitHub/civic-experiment/docs/architecture.md) for the intended split between code and local data.
 
-```bash
-la_agendas crawl --dry-run
-```
+If this repo stays inside a live-synced OneDrive folder, it is safer to keep the SQLite database in a separate non-synced local path. SQLite file writes can be unreliable in some synced directories.
 
-This will:
-- Fetch the base URL (https://ceo.lacounty.gov/agendas/)
-- Extract all PDF links
-- Find and crawl meeting detail pages
-- Generate CSV outputs in `previews/` directory
-- **Not** download any PDFs
+## Current Status
 
-### Crawl with Filters
-
-```bash
-la_agendas crawl --only-agenda-pdfs --exclude-cancellations
-```
-
-### Crawl and Download PDFs
-
-```bash
-la_agendas crawl --download-pdfs --rate-limit 2
-```
-
-PDFs will be organized as: `previews/pdfs/<group>/<date>/<filename>.pdf`
-
-### Verify Outputs
-
-```bash
-la_agendas verify
-```
-
-Checks for:
-- Non-empty CSVs
-- Duplicate (group, url) pairs
-- Absolute URLs
-- Date parsing coverage
-- Other quality issues
-
-### Extract Text from PDFs
-
-After downloading PDFs:
-
-```bash
-la_agendas parse-pdfs --pdf-dir previews/pdfs
-```
-
-This generates:
-- `pdf_text_extracted.csv`: Structured data with extracted text
-- `pdf_text_extracted.jsonl`: JSON Lines format for easy processing
-
-## CLI Reference
-
-### `crawl` Command
-
-Crawl LA County agendas site and extract PDF links.
-
-**Options:**
-
-- `--base-url`: Base URL to scrape (default: `https://ceo.lacounty.gov/agendas/`)
-- `--only-agenda-pdfs`: Filter to only PDFs with 'agenda' in name/text
-- `--exclude-cancellations`: Exclude PDFs with 'cancel' in name/text
-- `--outdir`: Output directory for CSVs (default: `previews`)
-- `--download-pdfs`: Download PDFs to disk
-- `--rate-limit`: Requests per second (default: `2.0`)
-- `--timeout`: Request timeout in seconds (default: `60`)
-- `--user-agent`: Custom User-Agent string
-- `--dry-run`: Don't download PDFs, still write CSVs
-- `--debug`: Enable debug logging
-
-**Examples:**
-
-```bash
-# Basic crawl
-la_agendas crawl
-
-# Crawl with custom output directory
-la_agendas crawl --outdir ./output
-
-# Crawl and download with rate limiting
-la_agendas crawl --download-pdfs --rate-limit 1
-
-# Crawl with filters
-la_agendas crawl --only-agenda-pdfs --exclude-cancellations --dry-run
-```
-
-### `verify` Command
-
-Verify CSV outputs for quality issues.
-
-**Options:**
-
-- `--outdir`: Output directory to verify (default: `previews`)
-- `--debug`: Enable debug logging
-
-**Example:**
-
-```bash
-la_agendas verify --outdir ./output
-```
-
-### `parse-pdfs` Command
-
-Extract text from downloaded PDFs.
-
-**Options:**
-
-- `--pdf-dir`: Directory containing downloaded PDFs (default: `previews/pdfs`)
-- `--outdir`: Output directory for extracted text (default: `previews`)
-- `--debug`: Enable debug logging
-
-**Example:**
-
-```bash
-la_agendas parse-pdfs --pdf-dir ./pdfs --outdir ./output
-```
-
-## Output Files
-
-### `all_links_raw.csv`
-
-Complete list of all PDF links with columns:
-- `group`: Meeting group name (or "(unlabeled)")
-- `date`: Parsed date (YYYY-MM-DD or "unknown_date")
-- `link_text`: Link anchor text
-- `url`: Absolute URL to PDF
-- `filename`: Extracted filename
-
-### `summary_by_group.csv`
-
-Summary statistics by group:
-- `group`: Meeting group name
-- `n_links`: Number of links in this group
-- `min_date`: Earliest date (or "unknown_date")
-- `max_date`: Latest date (or "unknown_date")
-
-### `preview_top5_by_group.csv`
-
-Top 5 links per group, sorted by date (descending):
-- `group`: Meeting group name
-- `date`: Parsed date
-- `link_text`: Link anchor text
-- `url`: Absolute URL
-
-### `unlabeled_links.csv`
-
-Links that couldn't be assigned to a meeting group (for manual review):
-- Same columns as `all_links_raw.csv`
-
-### `pdf_text_extracted.csv` (after `parse-pdfs`)
-
-Structured data from PDF text extraction:
-- `group`: Meeting group name
-- `date`: Date from directory structure
-- `link_text`: Title from PDF metadata (if available)
-- `url`: (empty, not available from file system)
-- `filename`: PDF filename
-- `local_path`: Full path to PDF file
-- `text`: Extracted text content
-- `page_count`: Number of pages
-- `extraction_status`: "success", "empty", or "error: ..."
-
-## Project Structure
-
-```
-la-county-agendas/
-├── pyproject.toml          # Project configuration and dependencies
-├── Makefile                 # Development commands
-├── README.md               # This file
-├── src/
-│   └── la_agendas/
-│       ├── __init__.py
-│       ├── cli.py          # CLI interface (typer)
-│       ├── fetch.py        # HTTP fetching with retries
-│       ├── discovery.py    # DOM discovery (h4s, tabs, PDFs)
-│       ├── extract.py      # Link extraction and labeling
-│       ├── parse.py        # Date parsing
-│       ├── output.py       # CSV generation
-│       ├── util.py         # Utilities (filters, dedupe, URLs)
-│       ├── pdf_download.py # PDF download functionality
-│       └── pdf_parse.py    # PDF text extraction
-└── tests/
-    ├── test_parse.py       # Date parsing tests
-    ├── test_extract.py     # Extraction logic tests
-    └── test_cli.py         # CLI tests
-```
-
-## Development
-
-### Running Tests
-
-```bash
-make test
-# or
-pytest tests/ -v
-```
-
-### Linting
-
-```bash
-make lint
-# or
-ruff check src/ tests/
-mypy src/
-```
-
-### Formatting
-
-```bash
-make fmt
-# or
-black src/ tests/
-ruff check --fix src/ tests/
-```
-
-### Clean Build Artifacts
-
-```bash
-make clean
-```
-
-## How It Works
-
-### Discovery Strategy
-
-1. **Forward Pass**: From each qualifying `<h4>` heading, find following tab containers and collect PDF links
-2. **Reverse Pass**: From each tab container, walk upward to find nearest preceding `<h4>`
-3. **Global Sweep**: Find all PDF links anywhere in the DOM, label by nearest preceding `<h4>`
-4. **Detail Pages**: Follow meeting detail page links and repeat extraction
-
-### Date Parsing
-
-Supports multiple formats:
-- Full month names: "October 15, 2025"
-- Abbreviated: "Oct 15, 2025"
-- Slash format: "10/15/2025"
-- Dash format: "10-15-2025"
-- Dot format: "10.15.2025"
-- 2-digit years: "10/15/25" (assumes 20yy)
-
-### Group Labeling
-
-Groups are identified by `<h4>` headings containing:
-- "Cluster"
-- "Deputies"
-- "Committee"
-- "Meeting"
-
-(case-insensitive)
-
-Links without a nearby matching `<h4>` are labeled "(unlabeled)".
-
-## Requirements
-
-- Python 3.11+
-- See `pyproject.toml` for full dependency list
-
-## License
-
-Copyright (c) Robert Morrison, DBA Civic Experiment, all rights reserved.
-
-## Author
-
-Robert Morrison, DBA Civic Experiment
+This repo is now the real implementation project. The initial scaffold focuses on durable structure first so ingestion, analysis, and reporting can be added incrementally.

@@ -1,30 +1,47 @@
-"""Tests for CLI functionality."""
+from __future__ import annotations
 
-import pytest
-from typer.testing import CliRunner
+import sys
+import unittest
+from pathlib import Path
 
-from la_agendas.cli import app
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-runner = CliRunner()
-
-
-def test_cli_help():
-    """Test that CLI shows help."""
-    result = runner.invoke(app, ["--help"])
-    assert result.exit_code == 0
-    assert "LA County Agendas Scraper" in result.stdout
+from policy_tracker.cli import build_parser
 
 
-def test_cli_crawl_help():
-    """Test that crawl command shows help."""
-    result = runner.invoke(app, ["crawl", "--help"])
-    assert result.exit_code == 0
-    assert "Crawl LA County agendas site" in result.stdout
+class CliTests(unittest.TestCase):
+    def test_about_command_is_registered(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["about"])
+        self.assertEqual(args.command, "about")
+
+    def test_list_sources_accepts_config_dir(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["list-sources", "--config-dir", str(Path("configs"))])
+        self.assertEqual(args.command, "list-sources")
+
+    def test_inspect_gmail_message_command_is_registered(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "inspect-gmail-message",
+                "la_county_board_agendas",
+                str(Path("tests/fixtures/gmail_board_agenda.json")),
+            ]
+        )
+        self.assertEqual(args.command, "inspect-gmail-message")
+
+    def test_download_message_links_command_is_registered(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "download-message-links",
+                "la_county_board_agendas",
+                str(Path("tests/fixtures/gmail_board_agenda.json")),
+            ]
+        )
+        self.assertEqual(args.command, "download-message-links")
 
 
-def test_cli_verify_help():
-    """Test that verify command shows help."""
-    result = runner.invoke(app, ["verify", "--help"])
-    assert result.exit_code == 0
-    assert "Verify CSV outputs" in result.stdout
-
+if __name__ == "__main__":
+    unittest.main()

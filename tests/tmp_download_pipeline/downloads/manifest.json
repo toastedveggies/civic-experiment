@@ -1,0 +1,20 @@
+[
+  {
+    "target": {
+      "source_id": "la_county_board_agendas",
+      "message_id": "msg-local-1",
+      "message_type": "cluster_meeting_agendas",
+      "meeting_date": "2026-05-15",
+      "link_text": "Operations Cluster",
+      "url": "file:///C:/Users/ramor/OneDrive/Documents/GitHub/civic-experiment/tests/fixtures/sample_context.pdf",
+      "category": "direct_pdf",
+      "document_kind": "cluster_agenda_packet",
+      "filename": "sample_context.pdf"
+    },
+    "local_path": "tests\\tmp_download_pipeline\\downloads\\msg-local-1\\sample_context.pdf",
+    "metadata_path": "tests\\tmp_download_pipeline\\downloads\\msg-local-1\\sample_context.metadata.json",
+    "text_path": null,
+    "bytes_downloaded": 635,
+    "text_excerpt": null
+  }
+]

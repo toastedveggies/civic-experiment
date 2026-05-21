@@ -1,0 +1,34 @@
+{
+  "target": {
+    "source_id": "la_county_board_agendas",
+    "message_id": "msg-local-missing",
+    "message_type": "cluster_meeting_agendas",
+    "meeting_date": "2026-05-15",
+    "link_text": "Operations Cluster",
+    "url": "file:///C:/definitely-not-here/missing.pdf",
+    "category": "direct_pdf",
+    "document_kind": "cluster_agenda_packet",
+    "filename": "missing.pdf"
+  },
+  "processing_status": "download_failed",
+  "review_status": "not_needed",
+  "fetch_attempts": 1,
+  "local_path": null,
+  "metadata_path": null,
+  "bytes_downloaded": 0,
+  "extraction": {
+    "status": "not_started",
+    "method": null,
+    "text_path": null,
+    "text_excerpt": null,
+    "errors": []
+  },
+  "errors": [
+    {
+      "stage": "fetch",
+      "code": "file_not_found",
+      "message": "[WinError 3] The system cannot find the path specified: 'C:\\\\definitely-not-here\\\\missing.pdf'",
+      "retryable": false
+    }
+  ]
+}

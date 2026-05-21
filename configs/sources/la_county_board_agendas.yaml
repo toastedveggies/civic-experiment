@@ -1,0 +1,29 @@
+source_id: la_county_board_agendas
+source_name: Los Angeles County Board Agenda Materials
+jurisdiction: Los Angeles County
+government_level: county
+body_name: Los Angeles County Board of Supervisors
+source_type: hybrid
+collection_method: gmail_link_follow
+base_url: https://bos.lacounty.gov/board-meeting-agendas
+email_sender_patterns:
+  - BOSEXEC@subscriptions.lacounty.gov
+  - lacounty@subscriptions.lacounty.gov
+attachment_patterns: []
+meeting_frequency: weekly
+priority_level: high
+status: active
+adapter: la_county_gmail
+parser: lacounty_govdelivery_email
+tags:
+  - homelessness
+  - housing
+  - anti_poverty
+  - policing
+  - jails
+  - probation
+  - public_safety
+notes: >
+  Initial production source. Current observed pattern is GovDelivery email sent to
+  robert@civicexperiment.com with tracked links to bos.lacounty.gov agenda pages and
+  direct PDFs on file.lacounty.gov rather than file attachments.

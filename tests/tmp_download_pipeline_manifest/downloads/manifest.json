@@ -1,0 +1,38 @@
+{
+  "summary": {
+    "total": 1,
+    "ready": 1,
+    "needs_retry": 0,
+    "needs_manual_review": 0,
+    "download_failed": 0
+  },
+  "documents": [
+    {
+      "target": {
+        "source_id": "la_county_board_agendas",
+        "message_id": "msg-local-manifest",
+        "message_type": "cluster_meeting_agendas",
+        "meeting_date": "2026-05-15",
+        "link_text": "Operations Cluster",
+        "url": "file:///C:/Users/ramor/OneDrive/Documents/GitHub/civic-experiment/tests/fixtures/sample_context.pdf",
+        "category": "direct_pdf",
+        "document_kind": "cluster_agenda_packet",
+        "filename": "sample_context.pdf"
+      },
+      "processing_status": "ready",
+      "review_status": "not_needed",
+      "fetch_attempts": 1,
+      "local_path": "C:\\Users\\ramor\\OneDrive\\Documents\\GitHub\\civic-experiment\\tests\\tmp_download_pipeline_manifest\\downloads\\msg-local-manifest\\sample_context.pdf",
+      "metadata_path": "C:\\Users\\ramor\\OneDrive\\Documents\\GitHub\\civic-experiment\\tests\\tmp_download_pipeline_manifest\\downloads\\msg-local-manifest\\sample_context.metadata.json",
+      "bytes_downloaded": 635,
+      "extraction": {
+        "status": "extracted",
+        "method": "pypdf._reader",
+        "text_path": "C:\\Users\\ramor\\OneDrive\\Documents\\GitHub\\civic-experiment\\tests\\tmp_download_pipeline_manifest\\downloads\\msg-local-manifest\\sample_context.txt",
+        "text_excerpt": "Board agenda packet context sample for housing and probation.",
+        "errors": []
+      },
+      "errors": []
+    }
+  ]
+}

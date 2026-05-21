@@ -1,2 +1,0 @@
-[console_scripts]
-la_agendas = la_agendas.cli:app
