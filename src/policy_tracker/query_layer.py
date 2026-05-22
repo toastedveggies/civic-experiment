@@ -11,6 +11,7 @@ from policy_tracker.runtime_config import load_runtime_config
 
 @dataclass(slots=True)
 class QueryFilters:
+    source_id: str | None = None
     topic: str | None = None
     cluster: str | None = None
     meeting_date: str | None = None
@@ -80,6 +81,9 @@ def fetch_items_from_connection(
             "EXISTS (SELECT 1 FROM structured_item_topics tt WHERE tt.agenda_item_id = i.agenda_item_id AND tt.topic_tag = ?)"
         )
         params.append(query_filters.topic)
+    if query_filters.source_id:
+        where_clauses.append("i.source_id = ?")
+        params.append(query_filters.source_id)
     if query_filters.cluster:
         where_clauses.append("i.cluster_name = ?")
         params.append(query_filters.cluster)

@@ -23,6 +23,9 @@ class SourceConfig:
     notes: str | None = None
     adapter: str | None = None
     parser: str | None = None
+    gmail_query: str | None = None
+    download_root: str | None = None
+    structured_output_dir: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

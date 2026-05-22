@@ -1,0 +1,26 @@
+source_id: la_city_agendas
+source_name: Los Angeles City Agenda Materials
+jurisdiction: Los Angeles
+government_level: city
+body_name: City of Los Angeles
+source_type: hybrid
+collection_method: gmail_attachment_or_link
+priority_level: high
+status: planned
+base_url: null
+email_sender_patterns: []
+attachment_patterns: []
+meeting_frequency: weekly
+adapter: null
+parser: null
+gmail_query: subject:(agenda OR agendas) (from:cityofla.org OR from:lacity.org) -in:trash -in:spam
+download_root: local/downloads/la_city_agendas
+structured_output_dir: local/structured/la_city_agendas
+tags:
+  - housing
+  - homelessness
+  - land_use
+  - public_safety
+notes: >
+  Placeholder source config for upcoming City of Los Angeles agenda intake. The Gmail
+  query and sender patterns should be refined once the mailbox has a few real samples.

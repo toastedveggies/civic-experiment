@@ -15,6 +15,9 @@ priority_level: high
 status: active
 adapter: la_county_gmail
 parser: lacounty_govdelivery_email
+gmail_query: from:(lacounty@subscriptions.lacounty.gov OR BOSEXEC@subscriptions.lacounty.gov) ("Cluster Meeting Agendas" OR "Agenda for the Board Meeting" OR "Supplemental Agenda" OR "Agenda Spotlight") -in:trash -in:spam
+download_root: local/downloads/live_test
+structured_output_dir: local/structured/la_county_board_agendas
 tags:
   - homelessness
   - housing

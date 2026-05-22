@@ -6,6 +6,11 @@ from dataclasses import asdict
 from pathlib import Path
 
 from policy_tracker.downloader import download_assessed_message_targets, write_manifest
+from policy_tracker.findings import (
+    FindingFilters,
+    fetch_findings,
+    generate_findings,
+)
 from policy_tracker.ingestion import assess_gmail_message_file
 from policy_tracker.item_extraction import extract_agenda_items_from_text_path, write_structured_items
 from policy_tracker.query_layer import (
@@ -16,6 +21,7 @@ from policy_tracker.query_layer import (
     summarize_by_cluster,
     summarize_by_topic,
 )
+from policy_tracker.refresh import refresh_source
 from policy_tracker.storage import (
     build_items_index,
     materialize_structured_document,
@@ -135,6 +141,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Query structured agenda items from SQLite in a UI-friendly JSON format.",
     )
     list_parser.add_argument("--db-path", type=Path, default=None, help="Optional SQLite path.")
+    list_parser.add_argument("--source-id", default=None, help="Filter by source id.")
     list_parser.add_argument("--topic", default=None, help="Filter by topic tag.")
     list_parser.add_argument("--cluster", default=None, help="Filter by exact cluster name.")
     list_parser.add_argument("--meeting-date", default=None, help="Filter by meeting date text.")
@@ -146,6 +153,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Generate a first weekly digest from structured agenda items.",
     )
     digest_parser.add_argument("--db-path", type=Path, default=None, help="Optional SQLite path.")
+    digest_parser.add_argument("--source-id", default=None, help="Optional source id filter.")
     digest_parser.add_argument("--topic", default=None, help="Optional topic filter.")
     digest_parser.add_argument("--cluster", default=None, help="Optional cluster filter.")
     digest_parser.add_argument("--meeting-date", default=None, help="Optional meeting date filter.")
@@ -156,6 +164,61 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["json", "markdown"],
         default="markdown",
         help="Digest output format.",
+    )
+
+    findings_parser = subparsers.add_parser(
+        "generate-findings",
+        help="Generate first-pass findings from structured agenda items already in SQLite.",
+    )
+    findings_parser.add_argument("--db-path", type=Path, default=None, help="Optional SQLite path.")
+    findings_parser.add_argument("--source-id", default=None, help="Optional source id filter.")
+    findings_parser.add_argument("--topic", default=None, help="Optional topic filter.")
+    findings_parser.add_argument("--cluster", default=None, help="Optional cluster filter.")
+    findings_parser.add_argument("--meeting-date", default=None, help="Optional meeting date filter.")
+    findings_parser.add_argument("--search", default=None, help="Optional title/text search filter.")
+    findings_parser.add_argument("--limit", type=int, default=100, help="Maximum rows to consider.")
+
+    list_findings_parser = subparsers.add_parser(
+        "list-findings",
+        help="Query generated findings in a UI-friendly JSON format.",
+    )
+    list_findings_parser.add_argument("--db-path", type=Path, default=None, help="Optional SQLite path.")
+    list_findings_parser.add_argument("--source-id", default=None, help="Filter by source id.")
+    list_findings_parser.add_argument("--topic", default=None, help="Filter by topic tag.")
+    list_findings_parser.add_argument("--cluster", default=None, help="Filter by exact cluster name.")
+    list_findings_parser.add_argument("--meeting-date", default=None, help="Filter by meeting date text.")
+    list_findings_parser.add_argument("--priority", default=None, help="Filter by priority level.")
+    list_findings_parser.add_argument("--search", default=None, help="Filter by title/summary search.")
+    list_findings_parser.add_argument("--limit", type=int, default=50, help="Maximum rows to return.")
+
+    refresh_parser = subparsers.add_parser(
+        "refresh-source",
+        help="Scan a source-specific download root for new text artifacts, then import and analyze them.",
+    )
+    refresh_parser.add_argument("source_id", help="Source id from the source registry.")
+    refresh_parser.add_argument(
+        "--config-dir",
+        default=Path("configs/sources"),
+        type=Path,
+        help="Path to source config directory.",
+    )
+    refresh_parser.add_argument(
+        "--state-dir",
+        default=Path("local/state"),
+        type=Path,
+        help="Directory for refresh-state tracking files.",
+    )
+    refresh_parser.add_argument("--db-path", type=Path, default=None, help="Optional SQLite path.")
+    refresh_parser.add_argument(
+        "--skip-findings",
+        action="store_true",
+        help="Import new items without regenerating source findings.",
+    )
+    refresh_parser.add_argument(
+        "--findings-limit",
+        type=int,
+        default=10000,
+        help="Maximum number of source rows to consider when regenerating findings.",
     )
 
     return parser
@@ -256,6 +319,7 @@ def main() -> int:
 
     if args.command == "list-items":
         filters = QueryFilters(
+            source_id=args.source_id,
             topic=args.topic,
             cluster=args.cluster,
             meeting_date=args.meeting_date,
@@ -279,6 +343,7 @@ def main() -> int:
 
     if args.command == "weekly-digest":
         filters = QueryFilters(
+            source_id=args.source_id,
             topic=args.topic,
             cluster=args.cluster,
             meeting_date=args.meeting_date,
@@ -291,6 +356,54 @@ def main() -> int:
             print(json.dumps(digest, indent=2))
         else:
             print(render_weekly_digest_markdown(digest))
+        return 0
+
+    if args.command == "generate-findings":
+        filters = QueryFilters(
+            source_id=args.source_id,
+            topic=args.topic,
+            cluster=args.cluster,
+            meeting_date=args.meeting_date,
+            search=args.search,
+            limit=args.limit,
+        )
+        summary = generate_findings(db_path=args.db_path, filters=filters)
+        print(json.dumps(summary, indent=2))
+        return 0
+
+    if args.command == "list-findings":
+        filters = FindingFilters(
+            source_id=args.source_id,
+            topic=args.topic,
+            cluster=args.cluster,
+            meeting_date=args.meeting_date,
+            priority=args.priority,
+            search=args.search,
+            limit=args.limit,
+        )
+        findings = fetch_findings(db_path=args.db_path, filters=filters)
+        print(
+            json.dumps(
+                {
+                    "filters": asdict(filters),
+                    "count": len(findings),
+                    "findings": [finding.to_dict() for finding in findings],
+                },
+                indent=2,
+            )
+        )
+        return 0
+
+    if args.command == "refresh-source":
+        summary = refresh_source(
+            source_id=args.source_id,
+            config_dir=args.config_dir,
+            state_dir=args.state_dir,
+            db_path=args.db_path,
+            skip_findings=args.skip_findings,
+            findings_limit=args.findings_limit,
+        )
+        print(json.dumps(summary, indent=2))
         return 0
 
     parser.print_help()

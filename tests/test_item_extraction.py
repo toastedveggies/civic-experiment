@@ -34,3 +34,15 @@ class ItemExtractionTests(unittest.TestCase):
         self.assertIn("probation", probation_item.topic_tags)
         self.assertIn("contracting", probation_item.topic_tags)
         self.assertTrue(probation_item.speakers)
+
+    def test_extracts_homelessness_housing_items_from_roman_numeral_agenda(self) -> None:
+        path = self.repo_root / "tests" / "fixtures" / "homelessness_housing_sample.txt"
+        document = extract_agenda_items_from_text_path(path)
+
+        self.assertEqual(document.cluster_name, "Homelessness & Housing Cluster")
+        self.assertEqual(document.meeting_date, "May 14, 2026")
+        self.assertEqual(document.item_count, 4)
+        self.assertEqual(document.items[0].item_type, "other")
+        self.assertIn("homelessness", document.items[0].topic_tags)
+        self.assertIn("housing", document.items[1].topic_tags)
+        self.assertIn("Manny Ruiz", document.items[2].speakers[0])

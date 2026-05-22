@@ -74,13 +74,28 @@ class CliTests(unittest.TestCase):
 
     def test_list_items_command_is_registered(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["list-items", "--topic", "housing"])
+        args = parser.parse_args(["list-items", "--source-id", "la_county_board_agendas", "--topic", "housing"])
         self.assertEqual(args.command, "list-items")
 
     def test_weekly_digest_command_is_registered(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["weekly-digest", "--format", "json"])
         self.assertEqual(args.command, "weekly-digest")
+
+    def test_generate_findings_command_is_registered(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["generate-findings", "--cluster", "Public Safety Cluster"])
+        self.assertEqual(args.command, "generate-findings")
+
+    def test_list_findings_command_is_registered(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["list-findings", "--priority", "high"])
+        self.assertEqual(args.command, "list-findings")
+
+    def test_refresh_source_command_is_registered(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["refresh-source", "la_county_board_agendas"])
+        self.assertEqual(args.command, "refresh-source")
 
 
 if __name__ == "__main__":

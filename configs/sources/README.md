@@ -26,3 +26,14 @@ The registry is meant to be stable across ingestion and analysis changes. Adapte
 - `notes`
 - `adapter`
 - `parser`
+- `gmail_query`
+- `download_root`
+- `structured_output_dir`
+
+## Gmail-Automation Fields
+
+These optional fields are useful when a source is harvested through the connected Gmail workflow:
+
+- `gmail_query`: preferred Gmail search query for scheduled scans
+- `download_root`: source-specific local landing zone for downloaded PDFs/text
+- `structured_output_dir`: source-specific directory for structured JSON output

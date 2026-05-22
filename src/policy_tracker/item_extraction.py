@@ -7,9 +7,13 @@ from pathlib import Path
 from typing import Any
 
 
-SECTION_HEADER_RE = re.compile(r"^\s*(\d+)\.\s+([A-Z][A-Z/&()'\- ]+):?(?:\s+\[.*)?\s*$")
-ITEM_LETTER_RE = re.compile(r"^\s*([A-Z])[\.\)]\s+(.*\S)\s*$")
-SPEAKER_RE = re.compile(r"^\s*Speaker(?:\(s\))?:\s*(.*\S)\s*$", re.IGNORECASE)
+SECTION_HEADER_RE = re.compile(r"^\s*((?:\d+|[IVXLC]+))\.\s+(.+?)(?::\s*.*)?\s*$", re.IGNORECASE)
+ITEM_LETTER_RE = re.compile(r"^\s*([A-Z])[\.\)]\s+(.*\S)\s*$", re.IGNORECASE)
+SPEAKER_RE = re.compile(
+    r"^\s*(?:Speaker(?:s|\(s\))?|Presenter(?:s|\(s\))?):\s*(.*\S)?\s*$",
+    re.IGNORECASE,
+)
+SPEAKER_BULLET_RE = re.compile(r"^\s*(?:[\u2022-])\s*(.*\S)\s*$")
 DATE_RE = re.compile(r"DATE:\s*([A-Za-z]+\s+\d{1,2},\s+\d{4})")
 CLUSTER_RE = re.compile(r"([A-Za-z &]+) Cluster", re.IGNORECASE)
 STOP_LINE_RE = re.compile(
@@ -28,7 +32,7 @@ TOPIC_RULES = {
     "contracting": ["contract", "sole source", "agreement", "amendment", "master agreements"],
     "budget": ["budget", "fund", "appropriation", "parcel tax", "assessment rate"],
     "labor": ["workers", "compensation"],
-    "data_systems": ["systems", "laboratory", "maintenance", "engineering"],
+    "data_systems": ["systems", "laboratory", "maintenance", "engineering", "data integration", "dashboard", "hmis"],
 }
 
 
@@ -94,7 +98,7 @@ def extract_agenda_items_from_text(text: str, source_path: Path | None = None) -
 
         item_match = ITEM_LETTER_RE.match(line)
         if item_match and current_section_number and current_section_title:
-            item_label = item_match.group(1)
+            item_label = item_match.group(1).upper()
             collected_lines = [item_match.group(2)]
             index += 1
             while index < len(lines):
@@ -111,6 +115,9 @@ def extract_agenda_items_from_text(text: str, source_path: Path | None = None) -
 
             title, speakers, item_type = parse_item_block(collected_lines)
             text_block = clean_text(" ".join(collected_lines))
+            if title.lower() in {"none", "none."}:
+                continue
+
             items.append(
                 ExtractedAgendaItem(
                     cluster_name=cluster_name,
@@ -140,11 +147,11 @@ def extract_agenda_items_from_text(text: str, source_path: Path | None = None) -
 
 def normalize_text(text: str) -> str:
     replacements = {
-        "â€“": "-",
-        "â€”": "-",
-        "â€™": "'",
-        "â€œ": '"',
-        "â€\x9d": '"',
+        "Ã¢â‚¬â€œ": "-",
+        "Ã¢â‚¬â€": "-",
+        "Ã¢â‚¬â„¢": "'",
+        "Ã¢â‚¬Å“": '"',
+        "Ã¢â‚¬\x9d": '"',
         "\u00a0": " ",
     }
     normalized = text
@@ -182,12 +189,24 @@ def parse_item_block(lines: list[str]) -> tuple[str, list[str], str]:
     speakers: list[str] = []
     body_lines: list[str] = []
     item_type = "other"
+    collecting_speakers = False
 
     for line in lines:
         speaker_match = SPEAKER_RE.match(line)
         if speaker_match:
-            speakers = [clean_text(part) for part in speaker_match.group(1).split(",") if part.strip()]
+            collecting_speakers = True
+            speaker_value = speaker_match.group(1)
+            if speaker_value:
+                speakers.extend(split_speakers(speaker_value))
             continue
+        if collecting_speakers:
+            bullet_match = SPEAKER_BULLET_RE.match(line)
+            if bullet_match:
+                speakers.append(clean_text(bullet_match.group(1)))
+                continue
+            if not line.strip():
+                continue
+            collecting_speakers = False
         body_lines.append(line)
 
     cleaned_body = [clean_text(line) for line in body_lines if clean_text(line)]
@@ -196,6 +215,9 @@ def parse_item_block(lines: list[str]) -> tuple[str, list[str], str]:
         cleaned_body = cleaned_body[1:]
     elif cleaned_body and cleaned_body[0].upper().startswith("BOARD BRIEFING"):
         item_type = "board_briefing"
+        cleaned_body = cleaned_body[1:]
+    elif cleaned_body and cleaned_body[0].upper().startswith("MOTION"):
+        item_type = "board_motion"
         cleaned_body = cleaned_body[1:]
 
     title = clean_text(" ".join(cleaned_body))
@@ -210,6 +232,11 @@ def infer_topic_tags(text: str) -> list[str]:
     lowered = text.lower()
     tags = [tag for tag, keywords in TOPIC_RULES.items() if any(keyword in lowered for keyword in keywords)]
     return sorted(set(tags))
+
+
+def split_speakers(value: str) -> list[str]:
+    normalized = value.replace(" and ", ", ")
+    return [clean_text(part) for part in normalized.split(",") if clean_text(part)]
 
 
 def write_structured_items(document: ExtractedAgendaDocument, output_path: Path) -> None:
