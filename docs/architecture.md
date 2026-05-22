@@ -85,6 +85,7 @@ Initial runtime assumptions:
 Practical note:
 
 - prefer storing the live SQLite database in a non-synced local path if the repo lives inside OneDrive, because synced folders can cause SQLite disk I/O issues
+- keep the runtime path in repo config, but keep the actual database file in a non-OneDrive location such as `AppData\Local`
 
 Planned migration path:
 

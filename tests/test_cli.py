@@ -42,6 +42,36 @@ class CliTests(unittest.TestCase):
         )
         self.assertEqual(args.command, "download-message-links")
 
+    def test_extract_items_command_is_registered(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "extract-items",
+                str(Path("tests/fixtures/community_services_sample.txt")),
+            ]
+        )
+        self.assertEqual(args.command, "extract-items")
+
+    def test_persist_items_command_is_registered(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "persist-items",
+                str(Path("tests/fixtures/community_services_sample.txt")),
+            ]
+        )
+        self.assertEqual(args.command, "persist-items")
+
+    def test_import_structured_items_command_is_registered(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "import-structured-items",
+                str(Path("local/structured/live_test/agenda_items.index.json")),
+            ]
+        )
+        self.assertEqual(args.command, "import-structured-items")
+
 
 if __name__ == "__main__":
     unittest.main()

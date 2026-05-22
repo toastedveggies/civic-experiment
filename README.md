@@ -46,6 +46,8 @@ Raw documents, extracted text, local databases, and logs should live outside Git
 
 If this repo stays inside a live-synced OneDrive folder, it is safer to keep the SQLite database in a separate non-synced local path. SQLite file writes can be unreliable in some synced directories.
 
+The current runtime config points the live SQLite database to [configs/runtime.json](/C:/Users/ramor/OneDrive/Documents/GitHub/civic-experiment/configs/runtime.json), which uses `C:\Users\ramor\AppData\Local\policy-tracker\policy_tracker.sqlite`.
+
 ## Current Status
 
 This repo is now the real implementation project. The initial scaffold focuses on durable structure first so ingestion, analysis, and reporting can be added incrementally.

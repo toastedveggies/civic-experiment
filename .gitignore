@@ -24,3 +24,4 @@ Thumbs.db
 # Existing archive artifacts
 archives/
 archives.zip
+tests/tmp_*/

@@ -1,0 +1,6 @@
+{
+  "database_path": "C:\\Users\\ramor\\AppData\\Local\\policy-tracker\\policy_tracker.sqlite",
+  "data_root": "C:\\Users\\ramor\\AppData\\Local\\policy-tracker",
+  "documents_root": "C:\\Users\\ramor\\AppData\\Local\\policy-tracker\\documents",
+  "logs_root": "C:\\Users\\ramor\\AppData\\Local\\policy-tracker\\logs"
+}
