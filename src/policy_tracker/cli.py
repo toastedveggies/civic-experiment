@@ -2,11 +2,20 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import asdict
 from pathlib import Path
 
 from policy_tracker.downloader import download_assessed_message_targets, write_manifest
 from policy_tracker.ingestion import assess_gmail_message_file
 from policy_tracker.item_extraction import extract_agenda_items_from_text_path, write_structured_items
+from policy_tracker.query_layer import (
+    QueryFilters,
+    build_weekly_digest,
+    fetch_items,
+    render_weekly_digest_markdown,
+    summarize_by_cluster,
+    summarize_by_topic,
+)
 from policy_tracker.storage import (
     build_items_index,
     materialize_structured_document,
@@ -121,6 +130,34 @@ def build_parser() -> argparse.ArgumentParser:
         help="Source id to stamp onto imported structured documents and items.",
     )
 
+    list_parser = subparsers.add_parser(
+        "list-items",
+        help="Query structured agenda items from SQLite in a UI-friendly JSON format.",
+    )
+    list_parser.add_argument("--db-path", type=Path, default=None, help="Optional SQLite path.")
+    list_parser.add_argument("--topic", default=None, help="Filter by topic tag.")
+    list_parser.add_argument("--cluster", default=None, help="Filter by exact cluster name.")
+    list_parser.add_argument("--meeting-date", default=None, help="Filter by meeting date text.")
+    list_parser.add_argument("--search", default=None, help="Filter by title/text search.")
+    list_parser.add_argument("--limit", type=int, default=50, help="Maximum rows to return.")
+
+    digest_parser = subparsers.add_parser(
+        "weekly-digest",
+        help="Generate a first weekly digest from structured agenda items.",
+    )
+    digest_parser.add_argument("--db-path", type=Path, default=None, help="Optional SQLite path.")
+    digest_parser.add_argument("--topic", default=None, help="Optional topic filter.")
+    digest_parser.add_argument("--cluster", default=None, help="Optional cluster filter.")
+    digest_parser.add_argument("--meeting-date", default=None, help="Optional meeting date filter.")
+    digest_parser.add_argument("--search", default=None, help="Optional title/text search filter.")
+    digest_parser.add_argument("--limit", type=int, default=100, help="Maximum rows to consider.")
+    digest_parser.add_argument(
+        "--format",
+        choices=["json", "markdown"],
+        default="markdown",
+        help="Digest output format.",
+    )
+
     return parser
 
 
@@ -215,6 +252,45 @@ def main() -> int:
             source_id=args.source_id,
         )
         print(json.dumps(summary, indent=2))
+        return 0
+
+    if args.command == "list-items":
+        filters = QueryFilters(
+            topic=args.topic,
+            cluster=args.cluster,
+            meeting_date=args.meeting_date,
+            search=args.search,
+            limit=args.limit,
+        )
+        items = fetch_items(db_path=args.db_path, filters=filters)
+        print(
+            json.dumps(
+                {
+                    "filters": asdict(filters),
+                    "count": len(items),
+                    "cluster_summary": summarize_by_cluster(items),
+                    "topic_summary": summarize_by_topic(items),
+                    "items": [item.to_dict() for item in items],
+                },
+                indent=2,
+            )
+        )
+        return 0
+
+    if args.command == "weekly-digest":
+        filters = QueryFilters(
+            topic=args.topic,
+            cluster=args.cluster,
+            meeting_date=args.meeting_date,
+            search=args.search,
+            limit=args.limit,
+        )
+        items = fetch_items(db_path=args.db_path, filters=filters)
+        digest = build_weekly_digest(items)
+        if args.format == "json":
+            print(json.dumps(digest, indent=2))
+        else:
+            print(render_weekly_digest_markdown(digest))
         return 0
 
     parser.print_help()

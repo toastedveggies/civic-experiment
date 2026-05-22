@@ -4,6 +4,8 @@ Policy Tracker is a local-first document intelligence system for tracking agenda
 
 The first implementation target is Los Angeles County agenda materials. The architecture is designed so we can later add City of Los Angeles, regional agencies, and additional jurisdictions without rebuilding the pipeline.
 
+The intended end-state is a system that harvests agenda emails and linked supporting documents from your Gmail on a schedule, archives them locally, and analyzes them for both current developments and trends over time.
+
 ## What This Repo Contains
 
 - source registry and source onboarding docs
@@ -24,10 +26,10 @@ The first implementation target is Los Angeles County agenda materials. The arch
 ## Planned V1 Scope
 
 - LA County source registry entries
-- local ingestion workflow for agenda documents and attachments
+- local and eventually scheduled ingestion workflow for Gmail-delivered agenda documents and linked supporting materials
 - normalized document metadata and archive conventions
 - SQLite storage for documents, agenda items, findings, evidence, and trendlines
-- staged AI analysis pipeline
+- staged AI analysis pipeline for current-item review and longitudinal trend tracking
 - weekly digest and batch memo outputs
 
 ## Repo Layout
@@ -50,4 +52,25 @@ The current runtime config points the live SQLite database to [configs/runtime.j
 
 ## Current Status
 
-This repo is now the real implementation project. The initial scaffold focuses on durable structure first so ingestion, analysis, and reporting can be added incrementally.
+This repo is now the real implementation project.
+
+Current working status:
+
+- LA County Gmail intake pattern is implemented for GovDelivery agenda emails
+- linked agenda PDFs can be categorized and downloaded with retry/manual-review states
+- downloaded PDFs can be text-extracted
+- extracted cluster agenda text can be parsed into structured agenda items
+- structured items can be persisted to JSON and imported into SQLite
+- query and digest commands now work against the live SQLite database
+
+Current live data snapshot:
+
+- live SQLite DB: `C:\Users\ramor\AppData\Local\policy-tracker\policy_tracker.sqlite`
+- imported structured documents: `3`
+- imported structured agenda items: `22`
+- imported structured topic links: `43`
+
+For the best current handoff docs, see:
+
+- [docs/build-status.md](/C:/Users/ramor/OneDrive/Documents/GitHub/civic-experiment/docs/build-status.md)
+- [docs/product-plan.md](/C:/Users/ramor/OneDrive/Documents/GitHub/civic-experiment/docs/product-plan.md)

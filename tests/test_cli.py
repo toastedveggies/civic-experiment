@@ -72,6 +72,16 @@ class CliTests(unittest.TestCase):
         )
         self.assertEqual(args.command, "import-structured-items")
 
+    def test_list_items_command_is_registered(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["list-items", "--topic", "housing"])
+        self.assertEqual(args.command, "list-items")
+
+    def test_weekly_digest_command_is_registered(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["weekly-digest", "--format", "json"])
+        self.assertEqual(args.command, "weekly-digest")
+
 
 if __name__ == "__main__":
     unittest.main()
