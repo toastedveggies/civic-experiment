@@ -9,7 +9,8 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from policy_tracker.refresh import refresh_source
+from policy_tracker.refresh import classify_text_path_for_refresh, refresh_source
+from policy_tracker.source_loader import get_source_config
 
 
 class RefreshSourceTests(unittest.TestCase):
@@ -90,6 +91,20 @@ class RefreshSourceTests(unittest.TestCase):
             self.assertTrue((state_root / "test_source.refresh_state.json").exists())
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_city_companion_pdf_text_is_screened_out_when_html_twin_exists(self) -> None:
+        source = get_source_config(self.repo_root / "configs" / "sources", "la_city_agendas")
+        path = self.repo_root / "local" / "downloads" / "la_city_agendas" / "primegov" / "2025-05-21" / "city-council-meeting" / "2025-05-21_city-council-meeting_agenda.txt"
+        decision = classify_text_path_for_refresh(source, path)
+        self.assertFalse(decision.include)
+        self.assertEqual(decision.reason, "non_canonical_companion")
+
+    def test_cancellation_notice_is_screened_out(self) -> None:
+        source = get_source_config(self.repo_root / "configs" / "sources", "la_county_ceo_agendas")
+        path = self.repo_root / "local" / "downloads" / "la_county_ceo_agendas" / "ceo" / "2025-07-16" / "family-and-social-services-cluster" / "2025-07-16_family-and-social-services-cluster_july-16-2025-canceled.txt"
+        decision = classify_text_path_for_refresh(source, path)
+        self.assertFalse(decision.include)
+        self.assertEqual(decision.reason, "cancellation_notice")
 
 
 if __name__ == "__main__":

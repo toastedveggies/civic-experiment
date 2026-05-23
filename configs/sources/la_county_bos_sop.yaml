@@ -14,7 +14,7 @@ tags:
   - statements-of-proceedings
   - historical
 adapter:
-parser:
+parser: la_county_bos_sop_text
 download_root: local/downloads/la_county_bos_sop
 structured_output_dir: local/structured/la_county_bos_sop
 notes: >

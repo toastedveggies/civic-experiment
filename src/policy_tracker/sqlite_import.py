@@ -5,6 +5,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from policy_tracker.date_utils import normalize_meeting_date_iso
 from policy_tracker.runtime_config import load_runtime_config
 
 
@@ -15,6 +16,7 @@ CREATE TABLE IF NOT EXISTS structured_documents (
     source_path TEXT NOT NULL,
     cluster_name TEXT,
     meeting_date TEXT,
+    meeting_date_iso TEXT,
     item_count INTEGER NOT NULL,
     structured_json_path TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -28,6 +30,7 @@ CREATE TABLE IF NOT EXISTS structured_agenda_items (
     source_path TEXT NOT NULL,
     cluster_name TEXT,
     meeting_date TEXT,
+    meeting_date_iso TEXT,
     section_number TEXT,
     section_title TEXT,
     item_label TEXT,
@@ -64,6 +67,36 @@ def get_database_path(path: Path | None = None) -> Path:
 
 def ensure_structured_tables(connection: sqlite3.Connection) -> None:
     connection.executescript(STRUCTURED_TABLES_SQL)
+    ensure_column(connection, "structured_documents", "meeting_date_iso", "TEXT")
+    ensure_column(connection, "structured_agenda_items", "meeting_date_iso", "TEXT")
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_structured_documents_meeting_date_iso
+            ON structured_documents(meeting_date_iso)
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_structured_items_meeting_date_iso
+            ON structured_agenda_items(meeting_date_iso)
+        """
+    )
+
+
+def ensure_column(
+    connection: sqlite3.Connection,
+    table_name: str,
+    column_name: str,
+    column_type: str,
+) -> None:
+    columns = {
+        row[1]
+        for row in connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+    }
+    if column_name not in columns:
+        connection.execute(
+            f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"
+        )
 
 
 def load_items_index(index_path: Path) -> list[dict[str, Any]]:
@@ -109,6 +142,7 @@ def build_document_summaries(
                 "source_path": row["source_path"],
                 "cluster_name": row.get("cluster_name"),
                 "meeting_date": row.get("meeting_date"),
+                "meeting_date_iso": row_meeting_date_iso(row),
                 "item_count": 0,
                 "structured_json_path": infer_structured_document_path(row["source_path"], structured_dir),
             },
@@ -128,15 +162,18 @@ def upsert_structured_documents(
     connection.executemany(
         """
         INSERT INTO structured_documents (
-            document_id, source_id, source_path, cluster_name, meeting_date, item_count, structured_json_path
+            document_id, source_id, source_path, cluster_name, meeting_date, meeting_date_iso,
+            item_count, structured_json_path
         ) VALUES (
-            :document_id, :source_id, :source_path, :cluster_name, :meeting_date, :item_count, :structured_json_path
+            :document_id, :source_id, :source_path, :cluster_name, :meeting_date, :meeting_date_iso,
+            :item_count, :structured_json_path
         )
         ON CONFLICT(document_id) DO UPDATE SET
             source_id = excluded.source_id,
             source_path = excluded.source_path,
             cluster_name = excluded.cluster_name,
             meeting_date = excluded.meeting_date,
+            meeting_date_iso = excluded.meeting_date_iso,
             item_count = excluded.item_count,
             structured_json_path = excluded.structured_json_path,
             updated_at = CURRENT_TIMESTAMP
@@ -156,6 +193,7 @@ def upsert_structured_items(
             "source_path": row["source_path"],
             "cluster_name": row.get("cluster_name"),
             "meeting_date": row.get("meeting_date"),
+            "meeting_date_iso": row_meeting_date_iso(row),
             "section_number": row.get("section_number"),
             "section_title": row.get("section_title"),
             "item_label": row.get("item_label"),
@@ -169,10 +207,10 @@ def upsert_structured_items(
     connection.executemany(
         """
         INSERT INTO structured_agenda_items (
-            agenda_item_id, document_id, source_id, source_path, cluster_name, meeting_date,
+            agenda_item_id, document_id, source_id, source_path, cluster_name, meeting_date, meeting_date_iso,
             section_number, section_title, item_label, item_type, title, speakers_json, text_block
         ) VALUES (
-            :agenda_item_id, :document_id, :source_id, :source_path, :cluster_name, :meeting_date,
+            :agenda_item_id, :document_id, :source_id, :source_path, :cluster_name, :meeting_date, :meeting_date_iso,
             :section_number, :section_title, :item_label, :item_type, :title, :speakers_json, :text_block
         )
         ON CONFLICT(agenda_item_id) DO UPDATE SET
@@ -181,6 +219,7 @@ def upsert_structured_items(
             source_path = excluded.source_path,
             cluster_name = excluded.cluster_name,
             meeting_date = excluded.meeting_date,
+            meeting_date_iso = excluded.meeting_date_iso,
             section_number = excluded.section_number,
             section_title = excluded.section_title,
             item_label = excluded.item_label,
@@ -192,6 +231,10 @@ def upsert_structured_items(
         """,
         payload,
     )
+
+
+def row_meeting_date_iso(row: dict[str, Any]) -> str | None:
+    return row.get("meeting_date_iso") or normalize_meeting_date_iso(row.get("meeting_date"))
 
 
 def replace_structured_topics(connection: sqlite3.Connection, rows: list[dict[str, Any]]) -> None:

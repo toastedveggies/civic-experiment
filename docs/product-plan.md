@@ -44,6 +44,7 @@ It already has the beginnings of:
 - add why-it-matters summaries
 - add priority scoring
 - improve topic mapping
+- normalize meeting dates and canonical metadata so cross-source filtering and sorting become reliable
 
 ### 2. Automate recurring intake
 
@@ -62,11 +63,26 @@ It already has the beginnings of:
 - add Family and Social Services and other high-relevance cluster packets consistently
 - onboard the next LA County, LA City, or regional agenda sources
 
+### 3a. Screen low-value artifacts before parser work
+
+- add a canonical-document selection layer so we parse the best available rendition of a meeting, not every duplicate
+- exclude cancellation notices, duplicate PDF/plain-text companions, and other non-item artifacts from parser-debt metrics
+- keep those low-value artifacts archived in `documents`, but separate them from substantive agenda/proceeding coverage goals
+- treat parser comprehensiveness as a goal for substantive agenda families, not for every raw file variant
+
 ### 4. Improve operator workflow
 
 - make refresh/import/report steps easier to rerun
 - add failure dashboards via queue files and query commands
 - improve document-level traceability
+- distinguish low-value archived artifacts from substantive parser debt in operator-facing summaries
+
+### 4a. Data hygiene
+
+- add normalized fields such as `meeting_date_iso`
+- preserve original display values alongside canonical normalized values
+- standardize body names, document status, and item-type semantics across parser families
+- improve parser cleanup rules for headers, footers, docket ids, and attachment boilerplate
 
 ### 5. Prepare for a visual interface
 
@@ -95,20 +111,22 @@ If a visual interface is added soon, the first useful screens should be:
 
 ## Suggested Next Build Sequence
 
-1. raise parser coverage on LA County CEO archive pulls
-2. live Gmail harvest plus source-specific ingest runners
-3. stronger findings, taxonomy, and ranking
-4. repeatable refresh/state tracking
-5. local API
-6. simple UI
+1. add normalized metadata hygiene, especially `meeting_date_iso`
+2. raise parser coverage on substantive LA County CEO and BOS pulls
+3. live Gmail harvest plus source-specific ingest runners
+4. stronger findings, taxonomy, and ranking
+5. repeatable refresh/state tracking
+6. local API
+7. simple UI
 
 ## Resume Point
 
 If picking this up later, the best next engineering task is:
 
-- close the main LA County CEO parser gaps in this order:
-- treat cancellation notices as intentional non-item documents
-- extend the County parser for the cluster motion-line variant
-- add parser families for regional homeless alignment agendas and homeless policy deputies agendas
+- first normalize structured metadata, especially dates
+- then close the main substantive parser gaps in this order:
+- add the homelessness and housing virtual agenda parser
+- improve BOS Statement of Proceedings coverage on wrapped set-matter and public-hearing text
+- handle housing/LACDA packet formats and remaining County CEO outliers
 
-That is the highest-leverage step because it turns a successful raw County archive backfill into a much more complete structured dataset before we automate more intake.
+That is the highest-leverage step because it improves reliability of filtering and joins while turning the substantive County and BOS backfills into much more complete structured datasets before we automate more intake.

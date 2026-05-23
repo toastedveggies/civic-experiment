@@ -12,7 +12,7 @@ from policy_tracker.findings import (
     generate_findings,
 )
 from policy_tracker.ingestion import assess_gmail_message_file, ingest_gmail_message_file
-from policy_tracker.item_extraction import extract_agenda_items_from_text_path, write_structured_items
+from policy_tracker.item_extraction import extract_agenda_items_from_text_path, list_parsers, write_structured_items
 from policy_tracker.query_layer import (
     QueryFilters,
     build_weekly_digest,
@@ -40,6 +40,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command")
 
     subparsers.add_parser("about", help="Show a short project description.")
+    subparsers.add_parser("list-parsers", help="List registered agenda parser families.")
 
     sources_parser = subparsers.add_parser(
         "list-sources",
@@ -274,6 +275,10 @@ def main() -> int:
             "Policy Tracker is a local-first pipeline for collecting, "
             "analyzing, and tracking public-sector policy documents over time."
         )
+        return 0
+
+    if args.command == "list-parsers":
+        print(json.dumps({"parsers": list_parsers()}, indent=2))
         return 0
 
     if args.command == "list-sources":

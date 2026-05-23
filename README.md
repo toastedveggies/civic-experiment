@@ -61,17 +61,19 @@ Current working status:
 - LA City Gmail notice intake is now implemented for Clerk listserv `.htm` attachments that point to PrimeGov meeting pages
 - LA County CEO archive agendas for selected bodies have been downloaded and loaded into the live database
 - attachment-aware source adapters and parser dispatch are in place, so new source families can plug into the same shared pipeline
+- low-value screening is now built into refresh so duplicate companions and cancellation notices stop inflating parser backlog
 - linked agenda documents can be downloaded, text-extracted, structured, and imported into SQLite
 - query, digest, and findings commands now work against the live SQLite database
 
 Current live data snapshot:
 
 - live SQLite DB: `C:\Users\ramor\AppData\Local\policy-tracker\policy_tracker.sqlite`
-- LA City structured item index in workspace: `2,188` items
-- LA City structured document JSON files in workspace: `372`
-- LA County CEO documents in live DB: `324`
-- LA County CEO structured items in live DB: `961`
-- LA County BOS Statement of Proceedings documents in live DB: `48`
+- raw documents in live DB: `743`
+- structured documents in live DB: `430`
+- structured agenda items in live DB: `3,395`
+- LA City raw documents / structured items: `371` / `2,188`
+- LA County CEO raw documents / structured items: `324` / `1,136`
+- LA County BOS Statement of Proceedings raw documents / structured items: `48` / `39`
 
 Current BOS note:
 
@@ -82,13 +84,20 @@ Current BOS note:
 
 Current parser backlog highlight:
 
-- the LA County CEO backfill is only partially structured so far
-- `95` County CEO PDFs remain unparsed, but they fall into a few repeatable format families:
-  - cancellation notices
-  - county cluster motion-line variants
-  - regional homeless alignment Brown Act agendas
-  - homeless policy deputies virtual agendas
+- the remaining unstructured set is not all true parser debt
+- a large share of remaining LA City misses are low-value companion files where richer HTML twins already exist
+- the next planning step is to separate:
+  - low-value/non-item documents that should be screened out or downgraded
+  - substantive documents that need broader parser-family coverage
+- current substantive parser backlog is concentrated in:
+  - homelessness and housing virtual agendas
   - housing committee and LACDA board-deputies packets
+  - BOS Statement of Proceedings shapes that still defeat the first parser pass
+  - residual LA County CEO outliers after the motion-line and regional-homeless-alignment parser improvements
+- the next hygiene step is to normalize dates and other canonical metadata across structured outputs, especially:
+  - `meeting_date_iso`
+  - canonical body/cluster names
+  - document status like `active`, `cancelled`, `revised`, `continued`
 
 For the best current handoff docs, see:
 

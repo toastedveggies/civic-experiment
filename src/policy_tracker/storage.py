@@ -16,6 +16,7 @@ class StoredAgendaItem:
     source_path: str
     cluster_name: str | None
     meeting_date: str | None
+    meeting_date_iso: str | None
     section_number: str
     section_title: str
     item_label: str
@@ -35,6 +36,7 @@ class StoredAgendaDocument:
     source_path: str
     cluster_name: str | None
     meeting_date: str | None
+    meeting_date_iso: str | None
     item_count: int
     items: list[StoredAgendaItem]
 
@@ -44,6 +46,7 @@ class StoredAgendaDocument:
             "source_path": self.source_path,
             "cluster_name": self.cluster_name,
             "meeting_date": self.meeting_date,
+            "meeting_date_iso": self.meeting_date_iso,
             "item_count": self.item_count,
             "items": [item.to_dict() for item in self.items],
         }
@@ -71,6 +74,7 @@ def materialize_structured_document(
             source_path=extracted.source_path,
             cluster_name=item.cluster_name,
             meeting_date=item.meeting_date,
+            meeting_date_iso=item.meeting_date_iso,
             section_number=item.section_number,
             section_title=item.section_title,
             item_label=item.item_label,
@@ -87,6 +91,7 @@ def materialize_structured_document(
         source_path=extracted.source_path,
         cluster_name=extracted.cluster_name,
         meeting_date=extracted.meeting_date,
+        meeting_date_iso=extracted.meeting_date_iso,
         item_count=len(items),
         items=items,
     )

@@ -7,12 +7,20 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from policy_tracker.date_utils import normalize_meeting_date_iso
+
 
 DEFAULT_PARSER_NAME = "la_county_cluster_text"
 LA_CITY_PRIMEGOV_HTML_PARSER = "la_city_primegov_html"
+LA_COUNTY_BOS_SOP_PARSER = "la_county_bos_sop_text"
 
 SECTION_HEADER_RE = re.compile(r"^\s*((?:\d+|[IVXLC]+))\.\s+(.+?)(?::\s*.*)?\s*$", re.IGNORECASE)
 ITEM_LETTER_RE = re.compile(r"^\s*([A-Z])[\.\)]\s+(.*\S)\s*$", re.IGNORECASE)
+MOTION_LINE_RE = re.compile(
+    r"^\s*((?:SD[-/]?\d+(?:/SD?[-/]?\d+)*))\s*(?::|[•\-\u2022])\s*(.*\S)?\s*$",
+    re.IGNORECASE,
+)
+MOTION_DISTRICT_ONLY_RE = re.compile(r"^\s*(SD[-/]?\d+(?:/SD?[-/]?\d+)*)\s*$", re.IGNORECASE)
 SPEAKER_RE = re.compile(
     r"^\s*(?:Speaker(?:s|\(s\))?|Presenter(?:s|\(s\))?):\s*(.*\S)?\s*$",
     re.IGNORECASE,
@@ -24,6 +32,7 @@ STOP_LINE_RE = re.compile(
     r"^\s*(IF YOU WOULD LIKE TO EMAIL A COMMENT|PUBLIC COMMENTS?|CLOSED SESSION ITEMS?|UPCOMING ITEM\(S\))",
     re.IGNORECASE,
 )
+SECTION_NUMBER_ONLY_RE = re.compile(r"^\s*\d+\.\s*$")
 
 PRIMEGOV_HTML_MARKER_RE = re.compile(
     r"class=['\"]meeting-item['\"]|data-sectionid=|id=['\"]MeetingContents['\"]",
@@ -64,6 +73,33 @@ PRIMEGOV_COMMUNITY_RE = re.compile(
     r"Community Impact Statement:\s*(.*?)(?:TIME LIMIT FILE|LAST DAY FOR COUNCIL ACTION|$)",
     re.IGNORECASE | re.DOTALL,
 )
+BOS_SOP_MARKER_RE = re.compile(r"STATEMENT OF PROCEEDINGS FOR THE", re.IGNORECASE)
+BOS_SOP_SECTION_RE = re.compile(r"^\s*([IVXLC]+)\.\s+(.+?)\s*$", re.IGNORECASE)
+BOS_SOP_ITEM_RE = re.compile(r"^\s*(\d+)\.\s+(.*\S)\s*$")
+BOS_SOP_FILE_ID_RE = re.compile(r"\(\d{2}\s*-\s*\d{4}\)")
+BOS_SOP_DATE_LINE_RE = re.compile(
+    r"\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),\s+([A-Za-z]+\s+\d{1,2},\s+\d{4})",
+    re.IGNORECASE,
+)
+BOS_SOP_STOP_RE = re.compile(
+    r"^\s*(The foregoing is a fair statement of the proceedings|Edward Yen, Executive Officer|Closing\s+\d+)",
+    re.IGNORECASE,
+)
+BOS_SOP_RANGE_ONLY_RE = re.compile(r"^[A-Z][A-Z\s/&.\-]+\s+\d+\s*-\s*\d+\s*$")
+REGIONAL_ALIGNMENT_MARKER_RE = re.compile(r"Regional Homeless Alignment", re.IGNORECASE)
+REGIONAL_ALIGNMENT_ITEM_RE = re.compile(r"^\s*(\d+)\.\s+(.*\S)\s*$")
+REGIONAL_ALIGNMENT_BODY_RE = re.compile(
+    r"AGENDA FOR THE REGULAR MEETING OF THE\s+(.*?)\s+(?:Kenneth Hahn Hall|The California Community Foundation|500 W\. Temple Street|500 West Temple Street)",
+    re.IGNORECASE | re.DOTALL,
+)
+REGIONAL_ALIGNMENT_DATE_RE = re.compile(
+    r"\b(MONDAY|TUESDAY|WEDNESDAY|THURSDAY|FRIDAY|SATURDAY|SUNDAY),\s+([A-Z][a-z]+\s+\d{1,2},\s+\d{4})",
+    re.IGNORECASE,
+)
+REGIONAL_ALIGNMENT_ATTACHMENTS_ONLY_RE = re.compile(
+    r"^(Supporting Document|Public Comment/Written Correspondence|Attachments:|Public Comment)$",
+    re.IGNORECASE,
+)
 
 TOPIC_RULES = {
     "housing": ["housing", "homekey", "multifamily", "supportive housing", "homelessness", "tenant"],
@@ -84,6 +120,7 @@ TOPIC_RULES = {
 class ExtractedAgendaItem:
     cluster_name: str | None
     meeting_date: str | None
+    meeting_date_iso: str | None
     section_number: str
     section_title: str
     item_label: str
@@ -102,6 +139,7 @@ class ExtractedAgendaDocument:
     source_path: str
     cluster_name: str | None
     meeting_date: str | None
+    meeting_date_iso: str | None
     item_count: int
     items: list[ExtractedAgendaItem]
 
@@ -110,12 +148,27 @@ class ExtractedAgendaDocument:
             "source_path": self.source_path,
             "cluster_name": self.cluster_name,
             "meeting_date": self.meeting_date,
+            "meeting_date_iso": self.meeting_date_iso,
             "item_count": self.item_count,
             "items": [item.to_dict() for item in self.items],
         }
 
 
 ParserFn = Callable[[str, Path | None], ExtractedAgendaDocument]
+
+
+@dataclass(frozen=True, slots=True)
+class ParserDefinition:
+    name: str
+    description: str
+    parser: ParserFn
+
+
+PARSER_REGISTRY: dict[str, ParserDefinition] = {}
+
+
+def _register_parser(name: str, description: str, parser: ParserFn) -> None:
+    PARSER_REGISTRY[name] = ParserDefinition(name=name, description=description, parser=parser)
 
 
 def extract_agenda_items_from_text_path(
@@ -138,17 +191,22 @@ def extract_agenda_items_from_text(
 def detect_parser_name(text: str, source_path: Path | None = None) -> str:
     if looks_like_primegov_html(text):
         return LA_CITY_PRIMEGOV_HTML_PARSER
+    if looks_like_bos_sop_text(text):
+        return LA_COUNTY_BOS_SOP_PARSER
     return DEFAULT_PARSER_NAME
 
 
 def get_parser(parser_name: str) -> ParserFn:
-    registry: dict[str, ParserFn] = {
-        DEFAULT_PARSER_NAME: extract_la_county_cluster_text_items,
-        LA_CITY_PRIMEGOV_HTML_PARSER: extract_primegov_html_agenda_items,
-    }
-    if parser_name not in registry:
+    if parser_name not in PARSER_REGISTRY:
         raise KeyError(f"Unknown parser: {parser_name}")
-    return registry[parser_name]
+    return PARSER_REGISTRY[parser_name].parser
+
+
+def list_parsers() -> list[dict[str, str]]:
+    return [
+        {"name": definition.name, "description": definition.description}
+        for definition in PARSER_REGISTRY.values()
+    ]
 
 
 def is_preferred_text_path_for_parser(path: Path, parser_name: str | None) -> bool:
@@ -161,13 +219,25 @@ def looks_like_primegov_html(text: str) -> bool:
     return bool(PRIMEGOV_HTML_MARKER_RE.search(text))
 
 
+def looks_like_bos_sop_text(text: str) -> bool:
+    return bool(BOS_SOP_MARKER_RE.search(text) and "Board of Supervisors" in text)
+
+
+def looks_like_regional_homeless_alignment(text: str) -> bool:
+    return bool(REGIONAL_ALIGNMENT_MARKER_RE.search(text) and "AGENDA FOR THE REGULAR MEETING OF THE" in text)
+
+
 def extract_la_county_cluster_text_items(
     text: str, source_path: Path | None = None
 ) -> ExtractedAgendaDocument:
+    if looks_like_regional_homeless_alignment(text):
+        return extract_regional_homeless_alignment_items(text, source_path)
+
     normalized = normalize_text(text)
     lines = [line.rstrip() for line in normalized.splitlines()]
     cluster_name = detect_cluster_name(normalized)
     meeting_date = detect_meeting_date(normalized)
+    meeting_date_iso = normalize_meeting_date_iso(meeting_date)
 
     items: list[ExtractedAgendaItem] = []
     current_section_number: str | None = None
@@ -209,6 +279,97 @@ def extract_la_county_cluster_text_items(
                 ExtractedAgendaItem(
                     cluster_name=cluster_name,
                     meeting_date=meeting_date,
+                    meeting_date_iso=meeting_date_iso,
+                    section_number=current_section_number,
+                    section_title=current_section_title,
+                    item_label=item_label,
+                    item_type=item_type,
+                    title=title,
+                    speakers=speakers,
+                    text_block=text_block,
+                    topic_tags=infer_topic_tags(text_block),
+                )
+            )
+            continue
+
+        motion_match = MOTION_LINE_RE.match(line)
+        if motion_match and current_section_number and current_section_title:
+            item_label = normalize_motion_label(motion_match.group(1))
+            collected_lines = []
+            inline_title = motion_match.group(2)
+            if inline_title:
+                collected_lines.append(inline_title)
+            index += 1
+            while index < len(lines):
+                next_line = lines[index]
+                next_clean = next_line.strip()
+                if (
+                    SECTION_HEADER_RE.match(next_line)
+                    or ITEM_LETTER_RE.match(next_line)
+                    or MOTION_LINE_RE.match(next_line)
+                    or STOP_LINE_RE.match(next_line)
+                    or is_cluster_boundary_line(next_line)
+                ):
+                    break
+                if current_section_title.lower().startswith("motions") and MOTION_DISTRICT_ONLY_RE.match(next_line):
+                    break
+                if next_clean:
+                    collected_lines.append(next_clean)
+                index += 1
+
+            title, speakers, item_type = parse_motion_block(collected_lines)
+            text_block = clean_text(" ".join(collected_lines))
+            if title.lower() in {"none", "none."}:
+                continue
+
+            items.append(
+                ExtractedAgendaItem(
+                    cluster_name=cluster_name,
+                    meeting_date=meeting_date,
+                    meeting_date_iso=meeting_date_iso,
+                    section_number=current_section_number,
+                    section_title=current_section_title,
+                    item_label=item_label,
+                    item_type=item_type,
+                    title=title,
+                    speakers=speakers,
+                    text_block=text_block,
+                    topic_tags=infer_topic_tags(text_block),
+                )
+            )
+            continue
+
+        motion_label_only = MOTION_DISTRICT_ONLY_RE.match(line)
+        if motion_label_only and current_section_number and current_section_title:
+            item_label = normalize_motion_label(motion_label_only.group(1))
+            collected_lines: list[str] = []
+            index += 1
+            while index < len(lines):
+                next_line = lines[index]
+                next_clean = next_line.strip()
+                if (
+                    SECTION_HEADER_RE.match(next_line)
+                    or ITEM_LETTER_RE.match(next_line)
+                    or MOTION_LINE_RE.match(next_line)
+                    or MOTION_DISTRICT_ONLY_RE.match(next_line)
+                    or STOP_LINE_RE.match(next_line)
+                    or is_cluster_boundary_line(next_line)
+                ):
+                    break
+                if next_clean:
+                    collected_lines.append(next_clean)
+                index += 1
+
+            title, speakers, item_type = parse_motion_block(collected_lines)
+            text_block = clean_text(" ".join(collected_lines))
+            if title.lower() in {"none", "none."}:
+                continue
+
+            items.append(
+                ExtractedAgendaItem(
+                    cluster_name=cluster_name,
+                    meeting_date=meeting_date,
+                    meeting_date_iso=meeting_date_iso,
                     section_number=current_section_number,
                     section_title=current_section_title,
                     item_label=item_label,
@@ -227,6 +388,87 @@ def extract_la_county_cluster_text_items(
         source_path=str(source_path) if source_path else "<memory>",
         cluster_name=cluster_name,
         meeting_date=meeting_date,
+        meeting_date_iso=meeting_date_iso,
+        item_count=len(items),
+        items=items,
+    )
+
+
+def extract_regional_homeless_alignment_items(
+    text: str, source_path: Path | None = None
+) -> ExtractedAgendaDocument:
+    normalized = normalize_text(text)
+    lines = [line.rstrip() for line in normalized.splitlines()]
+    body_name = detect_regional_alignment_body_name(text)
+    meeting_date = detect_regional_alignment_meeting_date(text)
+    meeting_date_iso = normalize_meeting_date_iso(meeting_date)
+    items: list[ExtractedAgendaItem] = []
+    current_section_number = ""
+    current_section_title = ""
+    index = 0
+
+    while index < len(lines):
+        line = clean_text(lines[index])
+        if not line:
+            index += 1
+            continue
+
+        section_match = SECTION_HEADER_RE.match(line)
+        if section_match and not REGIONAL_ALIGNMENT_ITEM_RE.match(line):
+            current_section_number = section_match.group(1).upper()
+            current_section_title = clean_text(section_match.group(2))
+            index += 1
+            continue
+
+        item_match = REGIONAL_ALIGNMENT_ITEM_RE.match(line)
+        if item_match and current_section_number:
+            item_label = item_match.group(1)
+            collected_lines = [item_match.group(2)]
+            index += 1
+            while index < len(lines):
+                next_line = clean_text(lines[index])
+                if not next_line:
+                    index += 1
+                    continue
+                if SECTION_HEADER_RE.match(next_line) and not REGIONAL_ALIGNMENT_ITEM_RE.match(next_line):
+                    break
+                if REGIONAL_ALIGNMENT_ITEM_RE.match(next_line):
+                    break
+                if next_line.startswith("Page "):
+                    index += 1
+                    continue
+                if "Agenda" == next_line or "Agenda" in next_line[-10:]:
+                    index += 1
+                    continue
+                collected_lines.append(next_line)
+                index += 1
+
+            title, text_block = parse_regional_alignment_item_block(collected_lines)
+            if title:
+                items.append(
+                    ExtractedAgendaItem(
+                        cluster_name=body_name,
+                        meeting_date=meeting_date,
+                        meeting_date_iso=meeting_date_iso,
+                        section_number=current_section_number,
+                        section_title=current_section_title,
+                        item_label=item_label,
+                        item_type="brown_act_agenda_item",
+                        title=title,
+                        speakers=[],
+                        text_block=text_block,
+                        topic_tags=infer_topic_tags(f"{current_section_title} {text_block}"),
+                    )
+                )
+            continue
+
+        index += 1
+
+    return ExtractedAgendaDocument(
+        source_path=str(source_path) if source_path else "<memory>",
+        cluster_name=body_name,
+        meeting_date=meeting_date,
+        meeting_date_iso=meeting_date_iso,
         item_count=len(items),
         items=items,
     )
@@ -237,6 +479,7 @@ def extract_primegov_html_agenda_items(
 ) -> ExtractedAgendaDocument:
     normalized = normalize_text(text)
     body_name, meeting_date = detect_primegov_body_and_date(normalized)
+    meeting_date_iso = normalize_meeting_date_iso(meeting_date)
     items: list[ExtractedAgendaItem] = []
 
     for section_body in split_primegov_section_blocks(normalized):
@@ -274,6 +517,7 @@ def extract_primegov_html_agenda_items(
                 ExtractedAgendaItem(
                     cluster_name=body_name,
                     meeting_date=meeting_date,
+                    meeting_date_iso=meeting_date_iso,
                     section_number=section_title,
                     section_title=section_title,
                     item_label=item_label,
@@ -289,6 +533,98 @@ def extract_primegov_html_agenda_items(
         source_path=str(source_path) if source_path else "<memory>",
         cluster_name=body_name,
         meeting_date=meeting_date,
+        meeting_date_iso=meeting_date_iso,
+        item_count=len(items),
+        items=items,
+    )
+
+
+def extract_la_county_bos_sop_items(
+    text: str, source_path: Path | None = None
+) -> ExtractedAgendaDocument:
+    normalized = normalize_text(text)
+    lines = [line.rstrip() for line in normalized.splitlines()]
+    meeting_date = detect_bos_sop_meeting_date(text)
+    meeting_date_iso = normalize_meeting_date_iso(meeting_date)
+    items: list[ExtractedAgendaItem] = []
+    current_section_number = ""
+    current_section_title = ""
+    index = 0
+
+    while index < len(lines):
+        line = clean_text(lines[index])
+        if not line:
+            index += 1
+            continue
+        if BOS_SOP_STOP_RE.match(line):
+            break
+
+        section_match = BOS_SOP_SECTION_RE.match(line)
+        if section_match:
+            current_section_number = section_match.group(1).upper()
+            current_section_title = clean_bos_sop_section_title(section_match.group(2))
+            index += 1
+            continue
+
+        if is_bos_sop_item_start(lines, index):
+            item_match = BOS_SOP_ITEM_RE.match(line)
+            assert item_match is not None
+            item_label = item_match.group(1)
+            title_lines = [item_match.group(2)]
+            index += 1
+
+            while index < len(lines):
+                next_line = clean_text(lines[index])
+                if not next_line:
+                    index += 1
+                    continue
+                if BOS_SOP_SECTION_RE.match(next_line) or BOS_SOP_STOP_RE.match(next_line):
+                    break
+                title_lines.append(next_line)
+                index += 1
+                if BOS_SOP_FILE_ID_RE.search(next_line):
+                    break
+
+            body_lines: list[str] = []
+            while index < len(lines):
+                next_line = clean_text(lines[index])
+                if not next_line:
+                    index += 1
+                    continue
+                if BOS_SOP_STOP_RE.match(next_line):
+                    break
+                if BOS_SOP_SECTION_RE.match(next_line) or is_bos_sop_item_start(lines, index):
+                    break
+                body_lines.append(next_line)
+                index += 1
+
+            title = clean_bos_sop_title(" ".join(title_lines))
+            text_block = clean_text(" ".join([title, *body_lines]))
+            if title:
+                items.append(
+                    ExtractedAgendaItem(
+                        cluster_name="Los Angeles County Board of Supervisors",
+                        meeting_date=meeting_date,
+                        meeting_date_iso=meeting_date_iso,
+                        section_number=current_section_number or "UNSPECIFIED",
+                        section_title=current_section_title or "Unspecified",
+                        item_label=item_label,
+                        item_type=infer_bos_sop_item_type(title, current_section_title),
+                        title=title,
+                        speakers=[],
+                        text_block=text_block,
+                        topic_tags=infer_topic_tags(f"{current_section_title} {text_block}"),
+                    )
+                )
+            continue
+
+        index += 1
+
+    return ExtractedAgendaDocument(
+        source_path=str(source_path) if source_path else "<memory>",
+        cluster_name="Los Angeles County Board of Supervisors",
+        meeting_date=meeting_date,
+        meeting_date_iso=meeting_date_iso,
         item_count=len(items),
         items=items,
     )
@@ -379,6 +715,48 @@ def detect_primegov_body_and_date(text: str) -> tuple[str | None, str | None]:
     return None, None
 
 
+def detect_bos_sop_meeting_date(text: str) -> str | None:
+    for raw_line in text.splitlines():
+        line = clean_text(raw_line)
+        match = BOS_SOP_DATE_LINE_RE.search(line)
+        if match:
+            return clean_text(f"{match.group(1)}, {match.group(2)}")
+    return None
+
+
+def detect_regional_alignment_body_name(text: str) -> str | None:
+    match = REGIONAL_ALIGNMENT_BODY_RE.search(text)
+    if match:
+        body = clean_text(match.group(1).replace("\n", " "))
+        return body.title()
+
+    lines = [clean_text(line) for line in text.splitlines()]
+    for index, line in enumerate(lines):
+        if line.upper() == "AGENDA FOR THE REGULAR MEETING OF THE":
+            collected: list[str] = []
+            probe = index + 1
+            while probe < len(lines):
+                candidate = lines[probe]
+                if not candidate:
+                    break
+                if candidate.startswith("I. "):
+                    break
+                if "Kenneth Hahn Hall" in candidate or "The California Community Foundation" in candidate:
+                    break
+                collected.append(candidate)
+                probe += 1
+            if collected:
+                return clean_text(" ".join(collected)).title()
+    return None
+
+
+def detect_regional_alignment_meeting_date(text: str) -> str | None:
+    match = REGIONAL_ALIGNMENT_DATE_RE.search(text)
+    if not match:
+        return None
+    return clean_text(f"{match.group(1).title()}, {match.group(2).title()}")
+
+
 def parse_slash_date(value: str) -> str | None:
     match = re.search(r"(\d{1,2})/(\d{1,2})/(\d{4})", value)
     if not match:
@@ -442,6 +820,51 @@ def parse_item_block(lines: list[str]) -> tuple[str, list[str], str]:
     return title, speakers, item_type
 
 
+def parse_regional_alignment_item_block(lines: list[str]) -> tuple[str, str]:
+    cleaned_lines = [clean_text(line) for line in lines if clean_text(line)]
+    filtered_lines: list[str] = []
+    for line in cleaned_lines:
+        if REGIONAL_ALIGNMENT_ATTACHMENTS_ONLY_RE.match(line):
+            continue
+        if line.startswith("Page "):
+            continue
+        filtered_lines.append(line)
+
+    title = clean_text(filtered_lines[0]) if filtered_lines else ""
+    title = clean_text(BOS_SOP_FILE_ID_RE.sub("", title)).strip(" -")
+    text_block = clean_text(" ".join(filtered_lines))
+    return title, text_block
+
+
+def parse_motion_block(lines: list[str]) -> tuple[str, list[str], str]:
+    cleaned_lines = [clean_text(line) for line in lines if clean_text(line)]
+    cleaned_lines = [
+        line
+        for line in cleaned_lines
+        if line.upper() not in {"MOTION", "MOTIONS:", "MOTIONS"}
+    ]
+    title = clean_text(" ".join(cleaned_lines))
+    title = re.sub(r"^[•\-\u2022]\s*", "", title)
+    return title, [], "board_motion"
+
+
+def normalize_motion_label(value: str) -> str:
+    return clean_text(value.upper().replace(" ", ""))
+
+
+def is_cluster_boundary_line(value: str) -> bool:
+    cleaned = clean_text(value)
+    if not cleaned:
+        return False
+    if SECTION_NUMBER_ONLY_RE.match(cleaned):
+        return True
+    if cleaned.lower() in {"board of", "supervisors"}:
+        return True
+    if cleaned.lower().startswith("board of supervisors"):
+        return True
+    return False
+
+
 def clean_text(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
 
@@ -470,6 +893,55 @@ def infer_topic_tags(text: str) -> list[str]:
     return sorted(set(tags))
 
 
+def is_bos_sop_item_start(lines: list[str], index: int) -> bool:
+    line = clean_text(lines[index])
+    if not line or BOS_SOP_RANGE_ONLY_RE.match(line):
+        return False
+    match = BOS_SOP_ITEM_RE.match(line)
+    if not match:
+        return False
+    if BOS_SOP_FILE_ID_RE.search(line):
+        return True
+
+    lookahead_limit = min(len(lines), index + 6)
+    for probe_index in range(index + 1, lookahead_limit):
+        probe = clean_text(lines[probe_index])
+        if not probe:
+            continue
+        if BOS_SOP_SECTION_RE.match(probe):
+            break
+        if BOS_SOP_ITEM_RE.match(probe) and not BOS_SOP_FILE_ID_RE.search(probe):
+            break
+        if BOS_SOP_FILE_ID_RE.search(probe):
+            return True
+    return False
+
+
+def clean_bos_sop_title(value: str) -> str:
+    cleaned = clean_text(BOS_SOP_FILE_ID_RE.sub("", value))
+    return cleaned.strip(" -")
+
+
+def clean_bos_sop_section_title(value: str) -> str:
+    cleaned = clean_text(value)
+    cleaned = re.sub(r"BOARD OF SUPERVISORS\s+\d+\s*-\s*\d+\s*$", "", cleaned, flags=re.IGNORECASE)
+    return clean_text(cleaned)
+
+
+def infer_bos_sop_item_type(title: str, section_title: str) -> str:
+    lowered_title = title.lower()
+    lowered_section = section_title.lower()
+    if lowered_title.startswith("motion "):
+        return "board_motion"
+    if "hearing" in lowered_title or "public hearing" in lowered_section:
+        return "public_hearing"
+    if "ordinance" in lowered_section or lowered_title.startswith("ordinance "):
+        return "ordinance"
+    if "closed session" in lowered_section:
+        return "closed_session"
+    return "bos_sop_item"
+
+
 def split_speakers(value: str) -> list[str]:
     normalized = value.replace(" and ", ", ")
     return [clean_text(part) for part in normalized.split(",") if clean_text(part)]
@@ -478,3 +950,20 @@ def split_speakers(value: str) -> list[str]:
 def write_structured_items(document: ExtractedAgendaDocument, output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(document.to_dict(), indent=2), encoding="utf-8")
+
+
+_register_parser(
+    DEFAULT_PARSER_NAME,
+    "LA County cluster-style extracted text agendas.",
+    extract_la_county_cluster_text_items,
+)
+_register_parser(
+    LA_CITY_PRIMEGOV_HTML_PARSER,
+    "LA City PrimeGov HTML agendas and committee pages.",
+    extract_primegov_html_agenda_items,
+)
+_register_parser(
+    LA_COUNTY_BOS_SOP_PARSER,
+    "LA County Board of Supervisors Statement of Proceedings extracted text.",
+    extract_la_county_bos_sop_items,
+)

@@ -28,6 +28,17 @@ class StorageTests(unittest.TestCase):
         self.assertTrue(all(item.document_id == document.document_id for item in document.items))
         self.assertTrue(all(item.agenda_item_id.startswith("item_") for item in document.items))
 
+    def test_materialized_documents_and_index_include_meeting_date_iso(self) -> None:
+        path = self.repo_root / "tests" / "fixtures" / "community_services_sample.txt"
+        document = materialize_structured_document(path)
+
+        self.assertEqual(document.meeting_date, "May 20, 2026")
+        self.assertEqual(document.meeting_date_iso, "2026-05-20")
+
+        rows = build_items_index([document])
+        self.assertEqual(rows[0]["meeting_date"], "May 20, 2026")
+        self.assertEqual(rows[0]["meeting_date_iso"], "2026-05-20")
+
     def test_write_structured_document_and_index(self) -> None:
         path_a = self.repo_root / "tests" / "fixtures" / "community_services_sample.txt"
         path_b = self.repo_root / "tests" / "fixtures" / "public_safety_sample.txt"
@@ -47,7 +58,9 @@ class StorageTests(unittest.TestCase):
         stored_doc = json.loads(doc_path.read_text(encoding="utf-8"))
         stored_index = json.loads(index_path.read_text(encoding="utf-8"))
         self.assertEqual(stored_doc["item_count"], 3)
+        self.assertEqual(stored_doc["meeting_date_iso"], "2026-05-20")
         self.assertEqual(len(stored_index), 6)
+        self.assertEqual(stored_index[0]["meeting_date_iso"], "2026-05-20")
 
 
 if __name__ == "__main__":

@@ -20,6 +20,11 @@ class CliTests(unittest.TestCase):
         args = parser.parse_args(["list-sources", "--config-dir", str(Path("configs"))])
         self.assertEqual(args.command, "list-sources")
 
+    def test_list_parsers_command_is_registered(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["list-parsers"])
+        self.assertEqual(args.command, "list-parsers")
+
     def test_inspect_gmail_message_command_is_registered(self) -> None:
         parser = build_parser()
         args = parser.parse_args(

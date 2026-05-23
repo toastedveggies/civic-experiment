@@ -31,6 +31,12 @@ class RefreshFileState:
         return asdict(self)
 
 
+@dataclass(slots=True)
+class RefreshScreenDecision:
+    include: bool
+    reason: str
+
+
 def refresh_source(
     source_id: str,
     config_dir: Path,
@@ -44,7 +50,7 @@ def refresh_source(
     structured_dir = get_structured_output_dir(source)
     state_path = get_state_path(state_dir, source_id)
     known_files = load_refresh_state(state_path)
-    text_paths = discover_text_paths(download_root, source.parser)
+    text_paths, screen_summary = discover_text_paths(source)
     changed_paths = select_changed_paths(text_paths, known_files)
 
     summary: dict[str, Any] = {
@@ -52,6 +58,8 @@ def refresh_source(
         "download_root": str(download_root),
         "structured_output_dir": str(structured_dir),
         "text_files_discovered": len(text_paths),
+        "text_files_screened_out": screen_summary["screened_out_total"],
+        "screened_out_breakdown": screen_summary["screened_out_breakdown"],
         "new_or_changed_text_files": len(changed_paths),
         "documents_written": 0,
         "items_written": 0,
@@ -106,14 +114,39 @@ def get_state_path(state_dir: Path, source_id: str) -> Path:
     return state_dir / f"{source_id}.refresh_state.json"
 
 
-def discover_text_paths(download_root: Path, parser_name: str | None = None) -> list[Path]:
+def discover_text_paths(source: SourceConfig) -> tuple[list[Path], dict[str, Any]]:
+    download_root = get_download_root(source)
     if not download_root.exists():
-        return []
-    return sorted(
-        path
-        for path in download_root.rglob("*.txt")
-        if path.is_file() and is_preferred_text_path_for_parser(path, parser_name)
-    )
+        return [], {"screened_out_total": 0, "screened_out_breakdown": {}}
+
+    included: list[Path] = []
+    screened_out_breakdown: dict[str, int] = {}
+    for path in sorted(download_root.rglob("*.txt")):
+        if not path.is_file():
+            continue
+        decision = classify_text_path_for_refresh(source, path)
+        if decision.include:
+            included.append(path)
+            continue
+        screened_out_breakdown[decision.reason] = screened_out_breakdown.get(decision.reason, 0) + 1
+
+    return included, {
+        "screened_out_total": sum(screened_out_breakdown.values()),
+        "screened_out_breakdown": screened_out_breakdown,
+    }
+
+
+def classify_text_path_for_refresh(source: SourceConfig, path: Path) -> RefreshScreenDecision:
+    if is_cancellation_notice_path(path):
+        return RefreshScreenDecision(include=False, reason="cancellation_notice")
+    if not is_preferred_text_path_for_parser(path, source.parser):
+        return RefreshScreenDecision(include=False, reason="non_canonical_companion")
+    return RefreshScreenDecision(include=True, reason="included")
+
+
+def is_cancellation_notice_path(path: Path) -> bool:
+    lowered = path.name.lower()
+    return any(token in lowered for token in ("cancelled", "canceled", "notice-of-cancellation"))
 
 
 def select_changed_paths(paths: list[Path], known_files: dict[str, RefreshFileState]) -> list[Path]:
