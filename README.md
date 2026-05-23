@@ -99,6 +99,12 @@ Current parser backlog highlight:
   - canonical body/cluster names
   - document status like `active`, `cancelled`, `revised`, `continued`
 
+Parser instruction reference:
+
+- parser-family extensions should preserve display date text in `meeting_date` and separately emit canonical normalized values in `meeting_date_iso`
+- if normalization is uncertain, leave `meeting_date_iso` empty rather than guessing
+- shared parser guidance lives in [docs/item-extraction.md](/C:/Users/ramor/OneDrive/Documents/GitHub/civic-experiment/docs/item-extraction.md)
+
 For the best current handoff docs, see:
 
 - [docs/build-status.md](/C:/Users/ramor/OneDrive/Documents/GitHub/civic-experiment/docs/build-status.md)
