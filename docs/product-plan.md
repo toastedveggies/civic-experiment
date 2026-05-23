@@ -2,7 +2,7 @@
 
 ## Product Direction
 
-Build a local-first public-policy tracking system that starts with LA County agenda materials and grows into a multi-jurisdiction research tool with durable memory, queryable history, and eventually a visual interface.
+Build a local-first public-policy tracking system that starts with LA County agenda materials, now includes LA City agenda intake, and grows into a multi-jurisdiction research tool with durable memory, queryable history, and eventually a visual interface.
 
 The primary operational goal is to harvest agenda emails and linked supporting documents from your Gmail on a schedule, then analyze those materials for both current developments and longer-term trends.
 
@@ -27,6 +27,10 @@ It already has the beginnings of:
 - a source onboarding model
 - a local archive
 - a Gmail-first LA County intake path
+- a Gmail-first LA City notice-to-PrimeGov intake path
+- a historical LA City PrimeGov backfill path
+- a historical LA County CEO archive backfill path
+- a historical LA County BOS Statement of Proceedings backfill path
 - structured item extraction
 - a live SQLite store
 - queryable item records
@@ -47,12 +51,16 @@ It already has the beginnings of:
 - make linked-document refresh repeatable
 - track which emails and linked documents have already been processed
 - produce a reliable "what's new since last run" flow
+- wire the live Gmail connector output into source-specific ingesters like the new LA City notice flow
 
 ### 3. Expand source coverage
 
-- pull additional LA County board supporting documents from board agenda pages
+- pull LA County Board historical materials from the Statement of Proceedings archive first, then expand into supporting documents from board agenda pages as needed
+- add a parser family for BOS Statements of Proceedings so Board actions become item-level records, not just raw documents
+- keep adding LA City bodies through parser-family reuse rather than one-off parsers
+- increase structured coverage for LA County CEO archive PDFs through parser-family reuse
 - add Family and Social Services and other high-relevance cluster packets consistently
-- onboard next LA County or City of LA sources
+- onboard the next LA County, LA City, or regional agenda sources
 
 ### 4. Improve operator workflow
 
@@ -87,16 +95,20 @@ If a visual interface is added soon, the first useful screens should be:
 
 ## Suggested Next Build Sequence
 
-1. findings generator
-2. scheduled Gmail harvest and refresh workflow
-3. stronger taxonomy and ranking
-4. local API
-5. simple UI
+1. raise parser coverage on LA County CEO archive pulls
+2. live Gmail harvest plus source-specific ingest runners
+3. stronger findings, taxonomy, and ranking
+4. repeatable refresh/state tracking
+5. local API
+6. simple UI
 
 ## Resume Point
 
 If picking this up later, the best next engineering task is:
 
-- build the findings-generation layer on top of the imported structured agenda items already in SQLite, then connect it to a scheduled Gmail refresh loop
+- close the main LA County CEO parser gaps in this order:
+- treat cancellation notices as intentional non-item documents
+- extend the County parser for the cluster motion-line variant
+- add parser families for regional homeless alignment agendas and homeless policy deputies agendas
 
-That is the step that will turn the current tracker from "queryable structured pipeline" into a true policy-analysis product.
+That is the highest-leverage step because it turns a successful raw County archive backfill into a much more complete structured dataset before we automate more intake.

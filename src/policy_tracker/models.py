@@ -41,6 +41,7 @@ class GmailMessage:
     email_ts: str | None = None
     snippet: str | None = None
     labels: list[str] = field(default_factory=list)
+    attachments: list["GmailAttachment"] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "GmailMessage":
@@ -53,7 +54,42 @@ class GmailMessage:
             email_ts=payload.get("email_ts"),
             snippet=payload.get("snippet"),
             labels=list(payload.get("labels", [])),
+            attachments=[
+                GmailAttachment.from_dict(attachment)
+                for attachment in payload.get("attachments", [])
+                if isinstance(attachment, dict)
+            ],
         )
+
+
+@dataclass(slots=True)
+class GmailAttachment:
+    filename: str
+    mime_type: str | None = None
+    content: str | None = None
+    attachment_id: str | None = None
+    path: str | None = None
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "GmailAttachment":
+        return cls(
+            filename=str(payload.get("filename") or payload.get("name") or "attachment"),
+            mime_type=payload.get("mime_type") or payload.get("mimeType"),
+            content=_first_text_value(payload, "content", "body", "text", "content_text"),
+            attachment_id=payload.get("attachment_id") or payload.get("attachmentId"),
+            path=payload.get("path") or payload.get("file_path"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def _first_text_value(payload: dict[str, Any], *keys: str) -> str | None:
+    for key in keys:
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+    return None
 
 
 @dataclass(slots=True)
@@ -78,6 +114,7 @@ class MessageAssessment:
     meeting_date: str | None
     relevant: bool
     links: list[ExtractedLink]
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)

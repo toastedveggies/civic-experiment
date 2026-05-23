@@ -1,0 +1,21 @@
+source_id: la_county_bos_sop
+source_name: Los Angeles County Board Statements of Proceedings
+jurisdiction: Los Angeles County
+government_level: county
+body_name: Los Angeles County Board of Supervisors
+source_type: archive
+collection_method: sop_search_download
+base_url: https://lacounty.gov/government/board-of-supervisors/statement-of-proceedings/
+meeting_frequency: weekly
+priority_level: high
+status: active
+tags:
+  - board
+  - statements-of-proceedings
+  - historical
+adapter:
+parser:
+download_root: local/downloads/la_county_bos_sop
+structured_output_dir: local/structured/la_county_bos_sop
+notes: >
+  Historical BOS backfill should prefer the Statement of Proceedings archive over the live BOS agenda page because the live site only exposes a short rolling window.

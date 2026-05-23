@@ -6,13 +6,16 @@ body_name: City of Los Angeles
 source_type: hybrid
 collection_method: gmail_attachment_or_link
 priority_level: high
-status: planned
+status: active
 base_url: null
-email_sender_patterns: []
-attachment_patterns: []
+email_sender_patterns:
+  - Clerk.LSadmin@lacity.org
+attachment_patterns:
+  - .htm
+  - .html
 meeting_frequency: weekly
-adapter: null
-parser: null
+adapter: la_city_gmail
+parser: la_city_primegov_html
 gmail_query: subject:(agenda OR agendas) (from:cityofla.org OR from:lacity.org) -in:trash -in:spam
 download_root: local/downloads/la_city_agendas
 structured_output_dir: local/structured/la_city_agendas
@@ -22,5 +25,7 @@ tags:
   - land_use
   - public_safety
 notes: >
-  Placeholder source config for upcoming City of Los Angeles agenda intake. The Gmail
-  query and sender patterns should be refined once the mailbox has a few real samples.
+  PrimeGov-backed City of Los Angeles agenda intake. Historical structured extraction
+  should prefer the downloaded HTML agenda text variants because they preserve section
+  and item boundaries more reliably than PDF text extraction. The Gmail query and sender
+  patterns should be refined once the mailbox has a few real samples.

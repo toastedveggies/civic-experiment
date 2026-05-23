@@ -1,0 +1,21 @@
+{
+  "id": "msg-la-city-1",
+  "from_": "City Clerk Clerk.LSadmin@lacity.org",
+  "to": [
+    "robert@civicexperiment.com"
+  ],
+  "subject": "05/26/2026 10:00 AM - Los Angeles City Council Agenda",
+  "body": "Agenda notice attached.",
+  "email_ts": "2026-05-22T09:00:00-07:00",
+  "labels": [
+    "INBOX",
+    "UNREAD"
+  ],
+  "attachments": [
+    {
+      "filename": "clkcouncilagenda155180_05262026.htm",
+      "mime_type": "text/html",
+      "content": "<html><body><p>LOS ANGELES CITY COUNCIL</p><p>AGENDA</p><p>Meeting Date: 05/26/2026 10:00 AM</p><p><a href=\"https://lacity.primegov.com/Portal/Meeting?meetingTemplateId=155180\">Open full agenda</a></p></body></html>"
+    }
+  ]
+}

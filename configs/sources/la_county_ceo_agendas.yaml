@@ -1,0 +1,29 @@
+source_id: la_county_ceo_agendas
+source_name: Los Angeles County CEO Agenda Archives
+jurisdiction: Los Angeles County
+government_level: county
+body_name: Los Angeles County Chief Executive Office
+source_type: web_archive
+collection_method: website_pdf_scrape
+base_url: https://ceo.lacounty.gov/agendas/
+email_sender_patterns: []
+attachment_patterns: []
+meeting_frequency: weekly
+priority_level: high
+status: active
+adapter: null
+parser: la_county_cluster_text
+gmail_query: null
+download_root: local/downloads/la_county_ceo_agendas
+structured_output_dir: local/structured/la_county_ceo_agendas
+tags:
+  - homelessness
+  - housing
+  - anti_poverty
+  - public_safety
+  - county_governance
+notes: >
+  Direct scrape source for LA County CEO agenda archives on ceo.lacounty.gov/agendas.
+  This source includes multiple cluster and commission bodies. Some bodies use the same
+  LA County cluster-style agenda format and others are archive-only PDFs that may need
+  source-specific parsers later if we want reliable structured item extraction.

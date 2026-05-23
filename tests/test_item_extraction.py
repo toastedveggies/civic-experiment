@@ -46,3 +46,16 @@ class ItemExtractionTests(unittest.TestCase):
         self.assertIn("homelessness", document.items[0].topic_tags)
         self.assertIn("housing", document.items[1].topic_tags)
         self.assertIn("Manny Ruiz", document.items[2].speakers[0])
+
+    def test_extracts_primegov_city_committee_items(self) -> None:
+        path = self.repo_root / "tests" / "fixtures" / "la_city_primegov_sample.html.txt"
+        document = extract_agenda_items_from_text_path(path, parser_name="la_city_primegov_html")
+
+        self.assertEqual(document.cluster_name, "Housing and Homelessness Committee")
+        self.assertEqual(document.meeting_date, "Wednesday, May 21, 2025")
+        self.assertEqual(document.item_count, 2)
+        self.assertEqual(document.items[0].item_label, "1")
+        self.assertEqual(document.items[0].section_title, "ITEM(S)")
+        self.assertIn("Council File: 23-1182", document.items[0].text_block)
+        self.assertIn("homelessness", document.items[0].topic_tags)
+        self.assertIn("data_systems", document.items[1].topic_tags)

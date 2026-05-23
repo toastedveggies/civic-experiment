@@ -1,0 +1,40 @@
+<html>
+<head><title>Housing and Homelessness Committee - 5/21/2025 9:30:00 PM</title></head>
+<body>
+<p><span style="text-transform:uppercase">Housing and Homelessness Committee</span></p>
+<p><span style="text-transform:uppercase">Wednesday, May 21, 2025 - 2:30 PM</span></p>
+<div class='section-with-items' data-sectionid='350273'>
+<table width='100%'>
+<tr class='section-row'><td colspan='2'><p style="text-decoration: underline; font-weight: bold;">ITEM(S)</p></td></tr>
+<tr><td colspan='2'>
+<div class='meeting-item' data-itemid='151112'>
+<table class='item-table'><tr>
+<td class='number-cell'><div><span>(1)</span></div></td>
+<td class='item-cell'><div class='agenda-item' id='AgendaItem_151112'>
+<table><tbody>
+<tr><td colspan="2">23-1182</td></tr>
+<tr><td></td><td><div>Chief Legislative Analyst report relative to homelessness outreach services and policy.</div></td></tr>
+</tbody></table>
+<table><tbody><tr><td></td><td><p><u>Fiscal Impact Statement:</u> No</p></td></tr></tbody></table>
+<table><tbody><tr><td></td><td><p><u>Community Impact Statement:</u> None submitted</p></td></tr></tbody></table>
+</div></td>
+</tr></table>
+</div>
+<div class='meeting-item' data-itemid='151172'>
+<table class='item-table'><tr>
+<td class='number-cell'><div><span>(2)</span></div></td>
+<td class='item-cell'><div class='agenda-item' id='AgendaItem_151172'>
+<table><tbody>
+<tr><td colspan="2">24-0327</td></tr>
+<tr><td></td><td><div>Chief Legislative Analyst report relative to the Coordinated Entry System and lease placement process.</div></td></tr>
+</tbody></table>
+<table><tbody><tr><td></td><td><p><u>Fiscal Impact Statement:</u> No</p></td></tr></tbody></table>
+<table><tbody><tr><td></td><td><p><u>Community Impact Statement:</u> None submitted</p></td></tr></tbody></table>
+</div></td>
+</tr></table>
+</div>
+</td></tr>
+</table>
+</div>
+</body>
+</html>

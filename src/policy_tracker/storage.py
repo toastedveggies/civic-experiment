@@ -59,8 +59,10 @@ def build_agenda_item_id(document_id: str, item_label: str, title: str) -> str:
     return f"item_{digest}"
 
 
-def materialize_structured_document(source_path: Path) -> StoredAgendaDocument:
-    extracted = extract_agenda_items_from_text_path(source_path)
+def materialize_structured_document(
+    source_path: Path, parser_name: str | None = None
+) -> StoredAgendaDocument:
+    extracted = extract_agenda_items_from_text_path(source_path, parser_name=parser_name)
     document_id = build_document_id(source_path)
     items = [
         StoredAgendaItem(

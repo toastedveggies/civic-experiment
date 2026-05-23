@@ -11,7 +11,7 @@ from policy_tracker.findings import (
     fetch_findings,
     generate_findings,
 )
-from policy_tracker.ingestion import assess_gmail_message_file
+from policy_tracker.ingestion import assess_gmail_message_file, ingest_gmail_message_file
 from policy_tracker.item_extraction import extract_agenda_items_from_text_path, write_structured_items
 from policy_tracker.query_layer import (
     QueryFilters,
@@ -90,11 +90,47 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum number of fetch attempts per target before queuing retry or failure.",
     )
 
+    ingest_email_parser = subparsers.add_parser(
+        "ingest-gmail-message",
+        help="Run a source-specific Gmail intake flow from a saved Gmail message JSON file.",
+    )
+    ingest_email_parser.add_argument("source_id", help="Source id from the source registry.")
+    ingest_email_parser.add_argument("message_json", type=Path, help="Path to Gmail message JSON.")
+    ingest_email_parser.add_argument(
+        "--config-dir",
+        default=Path("configs/sources"),
+        type=Path,
+        help="Path to source config directory.",
+    )
+    ingest_email_parser.add_argument(
+        "--db-path",
+        type=Path,
+        default=None,
+        help="Optional SQLite path. Defaults to the runtime-configured database path.",
+    )
+    ingest_email_parser.add_argument(
+        "--download-root",
+        type=Path,
+        default=None,
+        help="Optional source-specific download root override.",
+    )
+    ingest_email_parser.add_argument(
+        "--structured-output-dir",
+        type=Path,
+        default=None,
+        help="Optional source-specific structured output directory override.",
+    )
+
     extract_parser = subparsers.add_parser(
         "extract-items",
         help="Extract structured agenda items from an extracted text file.",
     )
     extract_parser.add_argument("text_path", type=Path, help="Path to extracted agenda text file.")
+    extract_parser.add_argument(
+        "--parser",
+        default=None,
+        help="Optional parser name. Defaults to auto-detection.",
+    )
     extract_parser.add_argument(
         "--output-path",
         type=Path,
@@ -117,6 +153,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path("local/structured"),
         help="Directory where structured document JSON files and item index will be written.",
+    )
+    batch_parser.add_argument(
+        "--parser",
+        default=None,
+        help="Optional parser name to use for every supplied text file.",
     )
 
     import_parser = subparsers.add_parser(
@@ -278,15 +319,28 @@ def main() -> int:
         )
         return 0
 
+    if args.command == "ingest-gmail-message":
+        summary = ingest_gmail_message_file(
+            source_id=args.source_id,
+            message_path=args.message_json,
+            config_dir=args.config_dir,
+            db_path=args.db_path,
+            download_root=args.download_root,
+            structured_output_dir=args.structured_output_dir,
+        )
+        print(json.dumps(summary, indent=2))
+        return 0
+
     if args.command == "extract-items":
-        document = extract_agenda_items_from_text_path(args.text_path)
+        document = extract_agenda_items_from_text_path(args.text_path, parser_name=args.parser)
         if args.output_path is not None:
             write_structured_items(document, args.output_path)
         print(json.dumps(document.to_dict(), indent=2))
         return 0
 
     if args.command == "persist-items":
-        documents = [materialize_structured_document(path) for path in args.text_paths]
+        documents = [materialize_structured_document(path, parser_name=args.parser) for path in args.text_paths]
+        documents = [document for document in documents if document.item_count > 0]
         output_dir = args.output_dir
         for document in documents:
             source_name = Path(document.source_path).stem
@@ -300,6 +354,7 @@ def main() -> int:
                 {
                     "documents_written": len(documents),
                     "items_written": len(index_rows),
+                    "parser": args.parser,
                     "output_dir": str(output_dir),
                     "index_path": str(index_path),
                 },

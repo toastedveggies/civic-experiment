@@ -2,7 +2,7 @@
 
 Policy Tracker is a local-first document intelligence system for tracking agendas, attachments, and policy actions across public-sector bodies over time.
 
-The first implementation target is Los Angeles County agenda materials. The architecture is designed so we can later add City of Los Angeles, regional agencies, and additional jurisdictions without rebuilding the pipeline.
+The repo started with Los Angeles County agenda materials, and now also includes a real City of Los Angeles intake path. The architecture is designed so we can keep adding new agenda families and jurisdictions without rebuilding the pipeline each time.
 
 The intended end-state is a system that harvests agenda emails and linked supporting documents from your Gmail on a schedule, archives them locally, and analyzes them for both current developments and trends over time.
 
@@ -56,19 +56,39 @@ This repo is now the real implementation project.
 
 Current working status:
 
-- LA County Gmail intake pattern is implemented for GovDelivery agenda emails
-- linked agenda PDFs can be categorized and downloaded with retry/manual-review states
-- downloaded PDFs can be text-extracted
-- extracted cluster agenda text can be parsed into structured agenda items
-- structured items can be persisted to JSON and imported into SQLite
-- query and digest commands now work against the live SQLite database
+- LA County Gmail intake is implemented for GovDelivery agenda emails
+- LA City historical PrimeGov agendas have been downloaded, archived, and parsed into structured items
+- LA City Gmail notice intake is now implemented for Clerk listserv `.htm` attachments that point to PrimeGov meeting pages
+- LA County CEO archive agendas for selected bodies have been downloaded and loaded into the live database
+- attachment-aware source adapters and parser dispatch are in place, so new source families can plug into the same shared pipeline
+- linked agenda documents can be downloaded, text-extracted, structured, and imported into SQLite
+- query, digest, and findings commands now work against the live SQLite database
 
 Current live data snapshot:
 
 - live SQLite DB: `C:\Users\ramor\AppData\Local\policy-tracker\policy_tracker.sqlite`
-- imported structured documents: `3`
-- imported structured agenda items: `22`
-- imported structured topic links: `43`
+- LA City structured item index in workspace: `2,188` items
+- LA City structured document JSON files in workspace: `372`
+- LA County CEO documents in live DB: `324`
+- LA County CEO structured items in live DB: `961`
+- LA County BOS Statement of Proceedings documents in live DB: `48`
+
+Current BOS note:
+
+- the public BOS agenda page is a Nuxt app that only exposes a short rolling window on the live site
+- a Wayback-based BOS page backfill scaffold exists, and `55` archived page snapshots were saved locally for reference
+- that path is not the preferred historical import route now
+- the County Statement of Proceedings archive is now the preferred BOS historical source, and the last 12 months of BOS SOP PDFs have been downloaded and imported as raw documents
+
+Current parser backlog highlight:
+
+- the LA County CEO backfill is only partially structured so far
+- `95` County CEO PDFs remain unparsed, but they fall into a few repeatable format families:
+  - cancellation notices
+  - county cluster motion-line variants
+  - regional homeless alignment Brown Act agendas
+  - homeless policy deputies virtual agendas
+  - housing committee and LACDA board-deputies packets
 
 For the best current handoff docs, see:
 

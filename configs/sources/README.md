@@ -37,3 +37,5 @@ These optional fields are useful when a source is harvested through the connecte
 - `gmail_query`: preferred Gmail search query for scheduled scans
 - `download_root`: source-specific local landing zone for downloaded PDFs/text
 - `structured_output_dir`: source-specific directory for structured JSON output
+
+Adapters can now support more than body-link parsing. For example, LA County currently uses a body-link Gmail adapter, while LA City uses an attachment-aware adapter that reads Clerk `.htm` notices, extracts PrimeGov meeting links, and then hands the fetched HTML to a source-specific parser family.

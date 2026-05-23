@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from policy_tracker.findings import generate_findings
+from policy_tracker.item_extraction import is_preferred_text_path_for_parser
 from policy_tracker.models import SourceConfig
 from policy_tracker.query_layer import QueryFilters
 from policy_tracker.source_loader import get_source_config
@@ -43,7 +44,7 @@ def refresh_source(
     structured_dir = get_structured_output_dir(source)
     state_path = get_state_path(state_dir, source_id)
     known_files = load_refresh_state(state_path)
-    text_paths = discover_text_paths(download_root)
+    text_paths = discover_text_paths(download_root, source.parser)
     changed_paths = select_changed_paths(text_paths, known_files)
 
     summary: dict[str, Any] = {
@@ -62,7 +63,8 @@ def refresh_source(
     if not changed_paths:
         return summary
 
-    documents = [materialize_structured_document(path) for path in changed_paths]
+    documents = [materialize_structured_document(path, parser_name=source.parser) for path in changed_paths]
+    documents = [document for document in documents if document.item_count > 0]
     structured_dir.mkdir(parents=True, exist_ok=True)
     for document in documents:
         source_name = Path(document.source_path).stem
@@ -104,10 +106,14 @@ def get_state_path(state_dir: Path, source_id: str) -> Path:
     return state_dir / f"{source_id}.refresh_state.json"
 
 
-def discover_text_paths(download_root: Path) -> list[Path]:
+def discover_text_paths(download_root: Path, parser_name: str | None = None) -> list[Path]:
     if not download_root.exists():
         return []
-    return sorted(path for path in download_root.rglob("*.txt") if path.is_file())
+    return sorted(
+        path
+        for path in download_root.rglob("*.txt")
+        if path.is_file() and is_preferred_text_path_for_parser(path, parser_name)
+    )
 
 
 def select_changed_paths(paths: list[Path], known_files: dict[str, RefreshFileState]) -> list[Path]:
