@@ -69,11 +69,12 @@ Current live data snapshot:
 
 - live SQLite DB: `C:\Users\ramor\AppData\Local\policy-tracker\policy_tracker.sqlite`
 - raw documents in live DB: `743`
-- structured documents in live DB: `430`
-- structured agenda items in live DB: `3,395`
+- structured documents in live DB: `445`
+- structured agenda items in live DB: `3,410`
+- structured item topics in live DB: `4,781`
 - LA City raw documents / structured items: `371` / `2,188`
 - LA County CEO raw documents / structured items: `324` / `1,136`
-- LA County BOS Statement of Proceedings raw documents / structured items: `48` / `39`
+- LA County BOS Statement of Proceedings raw documents / structured items: `48` / `58`
 
 Current BOS note:
 
@@ -90,14 +91,13 @@ Current parser backlog highlight:
   - low-value/non-item documents that should be screened out or downgraded
   - substantive documents that need broader parser-family coverage
 - current substantive parser backlog is concentrated in:
-  - homelessness and housing virtual agendas
   - housing committee and LACDA board-deputies packets
-  - BOS Statement of Proceedings shapes that still defeat the first parser pass
-  - residual LA County CEO outliers after the motion-line and regional-homeless-alignment parser improvements
-- the next hygiene step is to normalize dates and other canonical metadata across structured outputs, especially:
-  - `meeting_date_iso`
-  - canonical body/cluster names
-  - document status like `active`, `cancelled`, `revised`, `continued`
+  - residual BOS Statement of Proceedings shapes that still defeat the current parser pass
+  - residual LA County CEO outliers, especially `real-estate-management-commission` and linked supporting-document families
+- the next structural step is to move toward a meeting-centric model so we can:
+  - link agendas, minutes, and supporting docs to the meeting they describe
+  - normalize parliamentary actions such as motion, second, final action, and vote tally
+  - keep display dates alongside canonical values like `meeting_date_iso`
 
 Parser instruction reference:
 
@@ -109,3 +109,6 @@ For the best current handoff docs, see:
 
 - [docs/build-status.md](/C:/Users/ramor/OneDrive/Documents/GitHub/civic-experiment/docs/build-status.md)
 - [docs/product-plan.md](/C:/Users/ramor/OneDrive/Documents/GitHub/civic-experiment/docs/product-plan.md)
+- [docs/item-extraction.md](/C:/Users/ramor/OneDrive/Documents/GitHub/civic-experiment/docs/item-extraction.md)
+- [docs/issue-scanning.md](/C:/Users/ramor/OneDrive/Documents/GitHub/civic-experiment/docs/issue-scanning.md)
+- [docs/meeting-centric-model.md](/C:/Users/ramor/OneDrive/Documents/GitHub/civic-experiment/docs/meeting-centric-model.md)

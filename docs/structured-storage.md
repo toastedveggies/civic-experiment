@@ -2,7 +2,7 @@
 
 ## Goal
 
-Persist parsed agenda items into stable local JSON artifacts so the project can query and summarize them before the SQLite path is finalized.
+Persist parsed agenda items into stable local JSON artifacts so the project can query, validate, and re-import them as parser coverage improves.
 
 ## Current Output
 
@@ -16,14 +16,29 @@ The `persist-items` CLI command writes:
 This gives the project a durable intermediate layer between:
 
 - raw PDFs and extracted text
-- eventual SQLite ingestion and reporting
+- SQLite ingestion and reporting
 
-It also avoids blocking on the current OneDrive-related SQLite write issue.
+It also gives the project a durable intermediate layer for:
+
+- parser regression checks
+- scratch refresh validation before live DB writes
+- preserving cleaned structured output separately from raw extracted text
+
+## Current Status
+
+This layer is active and feeds the live SQLite import path.
+
+Structured JSON outputs now carry fields including:
+
+- meeting date display text
+- normalized `meeting_date_iso`
+- cleaned titles and text blocks
+- topic tags
 
 ## Next Step
 
 The next natural move after this layer is:
 
-1. add a report script that groups items by topic and cluster
-2. add SQLite import from the structured JSON index
-3. start generating weekly digests from structured rows
+1. carry meeting linkage and document-role metadata into the structured JSON layer
+2. add parliamentary action fields where proceedings or minutes expose them
+3. keep meeting-centric validation checks aligned with the live SQLite import path

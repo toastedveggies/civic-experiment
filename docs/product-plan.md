@@ -45,6 +45,8 @@ It already has the beginnings of:
 - add priority scoring
 - improve topic mapping
 - normalize meeting dates and canonical metadata so cross-source filtering and sorting become reliable
+- add a recursive issue-scan workflow that can identify top sources, key players, and follow-up passes for a given issue area
+- separate structural actors from softer extracted actors so issue scans can distinguish bodies, departments, sponsors, speakers, and outside institutions
 
 ### 2. Automate recurring intake
 
@@ -83,6 +85,9 @@ It already has the beginnings of:
 - preserve original display values alongside canonical normalized values
 - standardize body names, document status, and item-type semantics across parser families
 - improve parser cleanup rules for headers, footers, docket ids, and attachment boilerplate
+- add a meeting-centric model so agendas, minutes, presentations, staff reports, and other supporting docs can be queried together
+- distinguish the meeting where a document is presented from the meeting the document is actually about
+- normalize parliamentary actions such as motion, second, final action, and vote tally where minutes or proceedings expose them
 
 ### 5. Prepare for a visual interface
 
@@ -111,22 +116,20 @@ If a visual interface is added soon, the first useful screens should be:
 
 ## Suggested Next Build Sequence
 
-1. add normalized metadata hygiene, especially `meeting_date_iso`
-2. raise parser coverage on substantive LA County CEO and BOS pulls
-3. live Gmail harvest plus source-specific ingest runners
-4. stronger findings, taxonomy, and ranking
-5. repeatable refresh/state tracking
-6. local API
-7. simple UI
+1. add meeting-centric schema support for `meeting_id`, document roles, and supporting-document relationships
+2. normalize parliamentary action fields such as motion, second, final action, and vote tally
+3. raise remaining parser coverage on substantive LA County CEO outliers and linked minutes/supporting docs
+4. generate findings consistently across active sources
+5. live Gmail harvest plus source-specific ingest runners
+6. stronger issue-scan, actor, and timeline workflows
+7. local API and simple UI
 
 ## Resume Point
 
 If picking this up later, the best next engineering task is:
 
-- first normalize structured metadata, especially dates
-- then close the main substantive parser gaps in this order:
-- add the homelessness and housing virtual agenda parser
-- improve BOS Statement of Proceedings coverage on wrapped set-matter and public-hearing text
-- handle housing/LACDA packet formats and remaining County CEO outliers
+- first move the schema toward a meeting-centric model so agendas, minutes, and supporting docs can be linked to the meetings they describe
+- then add parliamentary-action fields and extend BOS/minutes parsing to capture who moved, seconded, and voted on items
+- then close the remaining substantive parser gaps in County CEO outliers and linked supporting-document families
 
-That is the highest-leverage step because it improves reliability of filtering and joins while turning the substantive County and BOS backfills into much more complete structured datasets before we automate more intake.
+That is the highest-leverage step because it turns the current corpus into a meeting-history system with usable outcome data before we automate more intake and broader issue tracking.

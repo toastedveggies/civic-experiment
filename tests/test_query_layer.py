@@ -12,6 +12,7 @@ from policy_tracker.query_layer import (
     build_weekly_digest,
     fetch_items_from_connection,
     render_weekly_digest_markdown,
+    summarize_parliamentary,
     summarize_by_cluster,
     summarize_by_topic,
 )
@@ -30,6 +31,17 @@ class QueryLayerTests(unittest.TestCase):
         self.repo_root = Path(__file__).resolve().parents[1]
         self.index_path = self.repo_root / "local" / "structured" / "live_test" / "agenda_items.index.json"
         rows = load_items_index(self.index_path)
+        rows[0]["meeting_id"] = "meeting_test_1"
+        rows[0]["document_role"] = "agenda"
+        rows[0]["motion_by"] = "Solis"
+        rows[0]["second_by"] = "Hahn"
+        rows[0]["final_action"] = "approved"
+        rows[0]["ayes_count"] = 4
+        rows[0]["noes_count"] = 0
+        rows[0]["abstain_count"] = 0
+        rows[0]["absent_count"] = 1
+        rows[0]["ayes_members"] = ["Solis", "Mitchell", "Horvath", "Hahn"]
+        rows[0]["absent_members"] = ["Barger"]
         summaries = build_document_summaries(rows, "la_county_board_agendas", self.index_path.parent)
         self.connection = sqlite3.connect(":memory:")
         self.connection.executescript(STRUCTURED_TABLES_SQL)
@@ -52,6 +64,25 @@ class QueryLayerTests(unittest.TestCase):
         cluster_summary = summarize_by_cluster(items)
         self.assertTrue(topic_summary)
         self.assertTrue(cluster_summary)
+
+    def test_fetch_items_with_parliamentary_filters(self) -> None:
+        items = fetch_items_from_connection(
+            self.connection,
+            QueryFilters(motion_by="Solis", final_action="approved", limit=20),
+        )
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0].second_by, "Hahn")
+        self.assertEqual(items[0].meeting_id, "meeting_test_1")
+
+    def test_summarize_parliamentary(self) -> None:
+        items = fetch_items_from_connection(self.connection, QueryFilters(limit=100))
+        summary = summarize_parliamentary(items)
+        self.assertEqual(summary["items_with_motion_by"], 1)
+        self.assertEqual(summary["items_with_second_by"], 1)
+        self.assertEqual(summary["items_with_final_action"], 1)
+        self.assertEqual(summary["unanimous_votes"], 1)
+        self.assertEqual(summary["motions_by_member"][0]["member"], "Solis")
+        self.assertEqual(summary["final_actions"][0]["final_action"], "approved")
 
     def test_weekly_digest_output(self) -> None:
         items = fetch_items_from_connection(self.connection, QueryFilters(limit=100))

@@ -34,10 +34,14 @@ class StorageTests(unittest.TestCase):
 
         self.assertEqual(document.meeting_date, "May 20, 2026")
         self.assertEqual(document.meeting_date_iso, "2026-05-20")
+        self.assertTrue(document.meeting_id and document.meeting_id.startswith("meeting_"))
+        self.assertEqual(document.document_role, "agenda")
 
         rows = build_items_index([document])
         self.assertEqual(rows[0]["meeting_date"], "May 20, 2026")
         self.assertEqual(rows[0]["meeting_date_iso"], "2026-05-20")
+        self.assertEqual(rows[0]["meeting_id"], document.meeting_id)
+        self.assertEqual(rows[0]["document_role"], "agenda")
 
     def test_write_structured_document_and_index(self) -> None:
         path_a = self.repo_root / "tests" / "fixtures" / "community_services_sample.txt"

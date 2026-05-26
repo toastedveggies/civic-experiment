@@ -26,6 +26,8 @@ Use this template whenever adding a new source.
 - How do documents arrive?
 - Are attachments sent directly or linked externally?
 - Are multiple document types bundled together?
+- Do agendas or packets link to prior meeting minutes?
+- Do agendas or packets link to staff reports, board letters, presentations, ordinances, or other supporting docs?
 - Is this source scriptable?
 - What are the naming quirks?
 
@@ -34,6 +36,13 @@ Use this template whenever adding a new source.
 - How is meeting date represented?
 - How is item numbering represented?
 - Are there stable agenda sections?
+- Can we distinguish canonical agendas from minutes and other supporting docs?
+- If minutes are linked, can we tell which earlier meeting they describe versus which later meeting approves them?
+- Is parliamentary action language present:
+  - moved by
+  - seconded by
+  - final action
+  - vote tally
 - Are OCR problems likely?
 
 ## Relevance Notes
@@ -49,4 +58,6 @@ Use this template whenever adding a new source.
 3. Verify filename normalization.
 4. Verify text extraction.
 5. Review extracted metadata quality.
-6. Mark source active.
+6. Verify whether linked minutes and supporting documents should be ingested as first-class documents.
+7. Verify whether minutes can be associated to the meeting they describe, not just the approval meeting.
+8. Mark source active.

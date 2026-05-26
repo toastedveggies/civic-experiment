@@ -139,6 +139,8 @@ def discover_text_paths(source: SourceConfig) -> tuple[list[Path], dict[str, Any
 def classify_text_path_for_refresh(source: SourceConfig, path: Path) -> RefreshScreenDecision:
     if is_cancellation_notice_path(path):
         return RefreshScreenDecision(include=False, reason="cancellation_notice")
+    if is_supporting_material_path(path):
+        return RefreshScreenDecision(include=False, reason="supporting_material")
     if not is_preferred_text_path_for_parser(path, source.parser):
         return RefreshScreenDecision(include=False, reason="non_canonical_companion")
     return RefreshScreenDecision(include=True, reason="included")
@@ -147,6 +149,10 @@ def classify_text_path_for_refresh(source: SourceConfig, path: Path) -> RefreshS
 def is_cancellation_notice_path(path: Path) -> bool:
     lowered = path.name.lower()
     return any(token in lowered for token in ("cancelled", "canceled", "notice-of-cancellation"))
+
+
+def is_supporting_material_path(path: Path) -> bool:
+    return any(part.lower() in {"supporting_docs", "supporting-docs"} for part in path.parts)
 
 
 def select_changed_paths(paths: list[Path], known_files: dict[str, RefreshFileState]) -> list[Path]:

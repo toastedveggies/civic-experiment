@@ -45,6 +45,7 @@ The archive layer keeps:
 - OCR outputs when needed
 - source metadata
 - parent/child relationships
+- meeting/document relationships, including when a document is about a prior meeting rather than the meeting where it was presented
 
 Raw data should be local and Git-ignored.
 
@@ -69,6 +70,7 @@ The reporting layer should support:
 - weekly digests
 - monthly trend summaries
 - issue/entity/jurisdiction search
+- meeting-centric views that bundle agendas, minutes, supporting docs, and parliamentary actions together
 
 Memory records should compress prior findings so future reviews do not require re-reading the full archive.
 

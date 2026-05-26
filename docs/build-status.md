@@ -46,14 +46,16 @@ The target operating model is:
 - PDF text extraction on downloaded cluster packets
 - structured agenda item extraction for LA County cluster agenda text
 - structured agenda item extraction for LA City PrimeGov HTML agendas
+- structured agenda item extraction for County CEO homelessness and housing virtual agendas
 - structured agenda item extraction for County CEO regional homeless alignment Brown Act agendas
-- first-pass structured extraction for BOS Statement of Proceedings text
+- improved structured extraction for BOS Statement of Proceedings text, including wrapped set-matter and public-hearing shapes
 - refresh-time screening for low-value artifacts:
   - cancellation notices
   - non-canonical LA City PDF/plain-text companions when richer HTML twins exist
 - item fields currently captured:
   - cluster name
   - meeting date
+  - normalized meeting date ISO
   - section metadata
   - item label
   - item type
@@ -83,9 +85,9 @@ The target operating model is:
 
 - path: `C:\Users\ramor\AppData\Local\policy-tracker\policy_tracker.sqlite`
 - raw documents in live DB: `743`
-- structured documents in live DB: `430`
-- structured agenda items in live DB: `3,395`
-- structured item topics in live DB: `4,730`
+- structured documents in live DB: `445`
+- structured agenda items in live DB: `3,410`
+- structured item topics in live DB: `4,781`
 - LA City structured item index: `local/structured/la_city_agendas/agenda_items.index.json`
 - LA City structured items in index: `2,188`
 - LA City structured document JSON files in workspace: `372`
@@ -97,8 +99,8 @@ The target operating model is:
 - LA County BOS SOP PDFs downloaded: `48`
 - LA County BOS SOP extracted text files: `48`
 - LA County BOS SOP documents imported into live DB: `48`
-- LA County BOS SOP structured documents imported: `21`
-- LA County BOS SOP structured agenda items imported: `39`
+- LA County BOS SOP structured documents imported: `36`
+- LA County BOS SOP structured agenda items imported: `58`
 - LA County BOS SOP date range in DB: `2025-05-27` through `2026-05-06`
 - LA County BOS SOP manifest: `local/downloads/la_county_bos_sop/bos_sop_last_12_months_manifest.json`
 - LA City refresh screening baseline:
@@ -150,11 +152,9 @@ The target operating model is:
   - most remaining substantive gaps are HTML cancellation/continuation/special variants
 - LA County CEO remaining raw-with-text but not structured: `74`
   - `36` cancellation notices
-  - `18` homelessness and housing virtual agenda format
-  - `9` residual other/outlier misses
-  - `6` regional homeless alignment leftovers
-  - `5` housing committee / LACDA board-deputies packet formats
-- LA County BOS SOP remaining raw-with-text but not structured: `27`
+  - residual unsupported outliers are now concentrated in `real-estate-management-commission`, `lacda-board-deputies`, and a smaller tail of other packet variants
+  - some remaining misses are still substantive parser debt rather than screening candidates
+- LA County BOS SOP remaining raw-with-text but not structured: `12`
   - mostly Statement of Proceedings parser misses on available text
   - at least one file appears to have first-page-only or otherwise degraded extraction
 
@@ -170,6 +170,24 @@ The target operating model is:
 Parser-build reference:
 - future parser work should preserve display date text in `meeting_date`, emit canonical ISO values in `meeting_date_iso` when confidently derivable, and leave the ISO field empty rather than guessing
 - use the shared helper in [src/policy_tracker/date_utils.py](/C:/Users/ramor/OneDrive/Documents/GitHub/civic-experiment/src/policy_tracker/date_utils.py:14) and the standing parser guidance in [docs/item-extraction.md](/C:/Users/ramor/OneDrive/Documents/GitHub/civic-experiment/docs/item-extraction.md)
+- recursive issue-evaluation guidance, including a key-players pass, now lives in [docs/issue-scanning.md](/C:/Users/ramor/OneDrive/Documents/GitHub/civic-experiment/docs/issue-scanning.md)
+
+## Structural Schema Follow-Ups
+
+The current live schema is workable, but a few structural issues showed up during SQL assessment and parser-refresh validation:
+
+- `structured_documents.document_id` is the structured row id, not a stable foreign key back to `documents.document_id`
+- `structured_documents` does not currently store a direct `source_document_id`, so raw-to-structured coverage checks have to match via path heuristics instead of a clean relational join
+- `documents.text_path` is stored as an absolute path while `structured_documents.source_path` is stored as a repo-relative path, which makes cross-table reconciliation more brittle than it should be
+- `structured_item_topics` only stores `agenda_item_id` and `topic_tag`, so source- or document-level topic analysis always requires a join through `structured_agenda_items`
+- some analytics queries are therefore more awkward than necessary and more sensitive to path-shape drift than they should be
+
+Recommended later fix:
+
+1. add an explicit raw-document foreign key such as `source_document_id` to `structured_documents`
+2. consider carrying that lineage into `structured_agenda_items` and optionally `structured_findings`
+3. normalize path conventions so structured/raw tables can be compared without relying on absolute-vs-relative path rewrites
+4. add a small query-friendly view layer for common joins if denormalizing topic rows is not desirable
 
 ## Screening Rules To Add
 
@@ -180,8 +198,8 @@ Parser-build reference:
 
 ## Best Next Steps
 
-1. add structured date normalization and canonical metadata hygiene, especially `meeting_date_iso`
-2. add a homelessness and housing virtual agenda parser family
-3. improve BOS Statement of Proceedings parsing and text-normalization coverage
-4. handle housing/LACDA packet formats and County CEO residual outliers
-5. connect the live Gmail connector output to the new `ingest-gmail-message` flow for LA City notices
+1. add meeting-centric schema support for `meeting_id`, document roles, and supporting-document relationships
+2. normalize parliamentary action fields such as motion, second, final action, and vote tally
+3. extend BOS and linked minutes/supporting-document parsing to capture outcome data cleanly
+4. handle County CEO residual outliers such as `real-estate-management-commission` and `lacda-board-deputies`
+5. generate findings consistently across active sources and improve issue-scan reliability

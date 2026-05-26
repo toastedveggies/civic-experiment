@@ -15,6 +15,10 @@ class QueryFilters:
     topic: str | None = None
     cluster: str | None = None
     meeting_date: str | None = None
+    meeting_date_iso: str | None = None
+    motion_by: str | None = None
+    second_by: str | None = None
+    final_action: str | None = None
     search: str | None = None
     limit: int = 50
 
@@ -25,8 +29,12 @@ class AgendaItemRecord:
     document_id: str
     source_id: str
     source_path: str
+    source_document_id: str | None
+    meeting_id: str | None
+    document_role: str | None
     cluster_name: str | None
     meeting_date: str | None
+    meeting_date_iso: str | None
     section_number: str | None
     section_title: str | None
     item_label: str | None
@@ -35,6 +43,19 @@ class AgendaItemRecord:
     speakers: list[str]
     text_block: str
     topic_tags: list[str]
+    action_text_raw: str | None
+    vote_text_raw: str | None
+    final_action: str | None
+    motion_by: str | None
+    second_by: str | None
+    ayes_count: int | None
+    noes_count: int | None
+    abstain_count: int | None
+    absent_count: int | None
+    ayes_members: list[str]
+    noes_members: list[str]
+    abstain_members: list[str]
+    absent_members: list[str]
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -60,8 +81,12 @@ def fetch_items_from_connection(
             i.document_id,
             i.source_id,
             i.source_path,
+            i.source_document_id,
+            i.meeting_id,
+            i.document_role,
             i.cluster_name,
             i.meeting_date,
+            i.meeting_date_iso,
             i.section_number,
             i.section_title,
             i.item_label,
@@ -69,6 +94,19 @@ def fetch_items_from_connection(
             i.title,
             i.speakers_json,
             i.text_block,
+            i.action_text_raw,
+            i.vote_text_raw,
+            i.final_action,
+            i.motion_by,
+            i.second_by,
+            i.ayes_count,
+            i.noes_count,
+            i.abstain_count,
+            i.absent_count,
+            i.ayes_members_json,
+            i.noes_members_json,
+            i.abstain_members_json,
+            i.absent_members_json,
             COALESCE(json_group_array(t.topic_tag), '[]') AS topic_tags_json
         FROM structured_agenda_items i
         LEFT JOIN structured_item_topics t ON t.agenda_item_id = i.agenda_item_id
@@ -90,6 +128,18 @@ def fetch_items_from_connection(
     if query_filters.meeting_date:
         where_clauses.append("i.meeting_date = ?")
         params.append(query_filters.meeting_date)
+    if query_filters.meeting_date_iso:
+        where_clauses.append("i.meeting_date_iso = ?")
+        params.append(query_filters.meeting_date_iso)
+    if query_filters.motion_by:
+        where_clauses.append("i.motion_by = ?")
+        params.append(query_filters.motion_by)
+    if query_filters.second_by:
+        where_clauses.append("i.second_by = ?")
+        params.append(query_filters.second_by)
+    if query_filters.final_action:
+        where_clauses.append("i.final_action = ?")
+        params.append(query_filters.final_action)
     if query_filters.search:
         where_clauses.append("(i.title LIKE ? OR i.text_block LIKE ?)")
         needle = f"%{query_filters.search}%"
@@ -104,8 +154,12 @@ def fetch_items_from_connection(
             i.document_id,
             i.source_id,
             i.source_path,
+            i.source_document_id,
+            i.meeting_id,
+            i.document_role,
             i.cluster_name,
             i.meeting_date,
+            i.meeting_date_iso,
             i.section_number,
             i.section_title,
             i.item_label,
@@ -113,7 +167,7 @@ def fetch_items_from_connection(
             i.title,
             i.speakers_json,
             i.text_block
-        ORDER BY i.meeting_date DESC, i.cluster_name ASC, i.section_number ASC, i.item_label ASC
+        ORDER BY COALESCE(i.meeting_date_iso, i.meeting_date) DESC, i.cluster_name ASC, i.section_number ASC, i.item_label ASC
         LIMIT ?
     """
     params.append(query_filters.limit)
@@ -122,24 +176,41 @@ def fetch_items_from_connection(
 
     records: list[AgendaItemRecord] = []
     for row in rows:
-        topic_tags = [tag for tag in json.loads(row[13]) if tag is not None]
-        speakers = json.loads(row[11])
+        topic_tags = [tag for tag in json.loads(row[30]) if tag is not None]
+        speakers = json.loads(row[15])
         records.append(
             AgendaItemRecord(
                 agenda_item_id=row[0],
                 document_id=row[1],
                 source_id=row[2],
                 source_path=row[3],
-                cluster_name=row[4],
-                meeting_date=row[5],
-                section_number=row[6],
-                section_title=row[7],
-                item_label=row[8],
-                item_type=row[9],
-                title=row[10],
+                source_document_id=row[4],
+                meeting_id=row[5],
+                document_role=row[6],
+                cluster_name=row[7],
+                meeting_date=row[8],
+                meeting_date_iso=row[9],
+                section_number=row[10],
+                section_title=row[11],
+                item_label=row[12],
+                item_type=row[13],
+                title=row[14],
                 speakers=speakers,
-                text_block=row[12],
+                text_block=row[16],
                 topic_tags=sorted(set(topic_tags)),
+                action_text_raw=row[17],
+                vote_text_raw=row[18],
+                final_action=row[19],
+                motion_by=row[20],
+                second_by=row[21],
+                ayes_count=row[22],
+                noes_count=row[23],
+                abstain_count=row[24],
+                absent_count=row[25],
+                ayes_members=[member for member in json.loads(row[26] or "[]") if member],
+                noes_members=[member for member in json.loads(row[27] or "[]") if member],
+                abstain_members=[member for member in json.loads(row[28] or "[]") if member],
+                absent_members=[member for member in json.loads(row[29] or "[]") if member],
             )
         )
     return records
@@ -165,6 +236,45 @@ def summarize_by_cluster(items: list[AgendaItemRecord]) -> list[dict[str, Any]]:
         {"cluster": cluster, "count": count}
         for cluster, count in sorted(counts.items(), key=lambda pair: (-pair[1], pair[0]))
     ]
+
+
+def summarize_parliamentary(items: list[AgendaItemRecord]) -> dict[str, Any]:
+    motions: dict[str, int] = {}
+    seconds: dict[str, int] = {}
+    actions: dict[str, int] = {}
+    unanimous = 0
+    split_votes = 0
+
+    for item in items:
+        if item.motion_by:
+            motions[item.motion_by] = motions.get(item.motion_by, 0) + 1
+        if item.second_by:
+            seconds[item.second_by] = seconds.get(item.second_by, 0) + 1
+        if item.final_action:
+            actions[item.final_action] = actions.get(item.final_action, 0) + 1
+        if item.ayes_count is not None:
+            if (item.noes_count or 0) == 0 and (item.abstain_count or 0) == 0:
+                unanimous += 1
+            elif (item.noes_count or 0) > 0 or (item.abstain_count or 0) > 0:
+                split_votes += 1
+
+    def to_rows(counts: dict[str, int], key: str) -> list[dict[str, Any]]:
+        return [
+            {key: name, "count": count}
+            for name, count in sorted(counts.items(), key=lambda pair: (-pair[1], pair[0]))
+        ]
+
+    return {
+        "items_with_motion_by": sum(1 for item in items if item.motion_by),
+        "items_with_second_by": sum(1 for item in items if item.second_by),
+        "items_with_final_action": sum(1 for item in items if item.final_action),
+        "items_with_vote_counts": sum(1 for item in items if item.ayes_count is not None),
+        "unanimous_votes": unanimous,
+        "split_votes": split_votes,
+        "motions_by_member": to_rows(motions, "member"),
+        "seconds_by_member": to_rows(seconds, "member"),
+        "final_actions": to_rows(actions, "final_action"),
+    }
 
 
 def build_weekly_digest(items: list[AgendaItemRecord]) -> dict[str, Any]:

@@ -106,6 +106,23 @@ class RefreshSourceTests(unittest.TestCase):
         self.assertFalse(decision.include)
         self.assertEqual(decision.reason, "cancellation_notice")
 
+    def test_supporting_docs_are_screened_out_of_agenda_refresh(self) -> None:
+        source = get_source_config(self.repo_root / "configs" / "sources", "la_county_ceo_agendas")
+        path = (
+            self.repo_root
+            / "local"
+            / "downloads"
+            / "la_county_ceo_agendas"
+            / "ceo"
+            / "2025-06-12"
+            / "executive-committee-for-regional-homeless-alignment"
+            / "supporting_docs"
+            / "supporting_001_203921.txt"
+        )
+        decision = classify_text_path_for_refresh(source, path)
+        self.assertFalse(decision.include)
+        self.assertEqual(decision.reason, "supporting_material")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -17,6 +17,7 @@ from policy_tracker.query_layer import (
     QueryFilters,
     build_weekly_digest,
     fetch_items,
+    summarize_parliamentary,
     render_weekly_digest_markdown,
     summarize_by_cluster,
     summarize_by_topic,
@@ -28,7 +29,7 @@ from policy_tracker.storage import (
     write_items_index,
     write_structured_document,
 )
-from policy_tracker.sqlite_import import import_items_index
+from policy_tracker.sqlite_import import backfill_structured_date_metadata, import_items_index
 from policy_tracker.source_loader import load_source_configs
 
 
@@ -178,6 +179,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Source id to stamp onto imported structured documents and items.",
     )
 
+    backfill_dates_parser = subparsers.add_parser(
+        "backfill-structured-dates",
+        help="Ensure structured SQLite tables have meeting_date_iso and backfill it from meeting_date.",
+    )
+    backfill_dates_parser.add_argument(
+        "--db-path",
+        type=Path,
+        default=None,
+        help="Optional SQLite path. Defaults to the runtime-configured database path.",
+    )
+
     list_parser = subparsers.add_parser(
         "list-items",
         help="Query structured agenda items from SQLite in a UI-friendly JSON format.",
@@ -187,6 +199,10 @@ def build_parser() -> argparse.ArgumentParser:
     list_parser.add_argument("--topic", default=None, help="Filter by topic tag.")
     list_parser.add_argument("--cluster", default=None, help="Filter by exact cluster name.")
     list_parser.add_argument("--meeting-date", default=None, help="Filter by meeting date text.")
+    list_parser.add_argument("--meeting-date-iso", default=None, help="Filter by canonical meeting date ISO.")
+    list_parser.add_argument("--motion-by", default=None, help="Filter by motion maker.")
+    list_parser.add_argument("--second-by", default=None, help="Filter by seconder.")
+    list_parser.add_argument("--final-action", default=None, help="Filter by normalized final action.")
     list_parser.add_argument("--search", default=None, help="Filter by title/text search.")
     list_parser.add_argument("--limit", type=int, default=50, help="Maximum rows to return.")
 
@@ -199,6 +215,10 @@ def build_parser() -> argparse.ArgumentParser:
     digest_parser.add_argument("--topic", default=None, help="Optional topic filter.")
     digest_parser.add_argument("--cluster", default=None, help="Optional cluster filter.")
     digest_parser.add_argument("--meeting-date", default=None, help="Optional meeting date filter.")
+    digest_parser.add_argument("--meeting-date-iso", default=None, help="Optional canonical meeting date filter.")
+    digest_parser.add_argument("--motion-by", default=None, help="Optional motion-maker filter.")
+    digest_parser.add_argument("--second-by", default=None, help="Optional seconder filter.")
+    digest_parser.add_argument("--final-action", default=None, help="Optional final-action filter.")
     digest_parser.add_argument("--search", default=None, help="Optional title/text search filter.")
     digest_parser.add_argument("--limit", type=int, default=100, help="Maximum rows to consider.")
     digest_parser.add_argument(
@@ -217,8 +237,28 @@ def build_parser() -> argparse.ArgumentParser:
     findings_parser.add_argument("--topic", default=None, help="Optional topic filter.")
     findings_parser.add_argument("--cluster", default=None, help="Optional cluster filter.")
     findings_parser.add_argument("--meeting-date", default=None, help="Optional meeting date filter.")
+    findings_parser.add_argument("--meeting-date-iso", default=None, help="Optional canonical meeting date filter.")
+    findings_parser.add_argument("--motion-by", default=None, help="Optional motion-maker filter.")
+    findings_parser.add_argument("--second-by", default=None, help="Optional seconder filter.")
+    findings_parser.add_argument("--final-action", default=None, help="Optional final-action filter.")
     findings_parser.add_argument("--search", default=None, help="Optional title/text search filter.")
     findings_parser.add_argument("--limit", type=int, default=100, help="Maximum rows to consider.")
+
+    parliamentary_parser = subparsers.add_parser(
+        "parliamentary-summary",
+        help="Summarize movers, seconders, actions, and vote patterns from structured agenda items.",
+    )
+    parliamentary_parser.add_argument("--db-path", type=Path, default=None, help="Optional SQLite path.")
+    parliamentary_parser.add_argument("--source-id", default=None, help="Optional source id filter.")
+    parliamentary_parser.add_argument("--topic", default=None, help="Optional topic filter.")
+    parliamentary_parser.add_argument("--cluster", default=None, help="Optional cluster filter.")
+    parliamentary_parser.add_argument("--meeting-date", default=None, help="Optional meeting date filter.")
+    parliamentary_parser.add_argument("--meeting-date-iso", default=None, help="Optional canonical meeting date filter.")
+    parliamentary_parser.add_argument("--motion-by", default=None, help="Optional motion-maker filter.")
+    parliamentary_parser.add_argument("--second-by", default=None, help="Optional seconder filter.")
+    parliamentary_parser.add_argument("--final-action", default=None, help="Optional final-action filter.")
+    parliamentary_parser.add_argument("--search", default=None, help="Optional title/text search filter.")
+    parliamentary_parser.add_argument("--limit", type=int, default=500, help="Maximum rows to consider.")
 
     list_findings_parser = subparsers.add_parser(
         "list-findings",
@@ -377,12 +417,21 @@ def main() -> int:
         print(json.dumps(summary, indent=2))
         return 0
 
+    if args.command == "backfill-structured-dates":
+        summary = backfill_structured_date_metadata(db_path=args.db_path)
+        print(json.dumps(summary, indent=2))
+        return 0
+
     if args.command == "list-items":
         filters = QueryFilters(
             source_id=args.source_id,
             topic=args.topic,
             cluster=args.cluster,
             meeting_date=args.meeting_date,
+            meeting_date_iso=args.meeting_date_iso,
+            motion_by=args.motion_by,
+            second_by=args.second_by,
+            final_action=args.final_action,
             search=args.search,
             limit=args.limit,
         )
@@ -407,6 +456,10 @@ def main() -> int:
             topic=args.topic,
             cluster=args.cluster,
             meeting_date=args.meeting_date,
+            meeting_date_iso=args.meeting_date_iso,
+            motion_by=args.motion_by,
+            second_by=args.second_by,
+            final_action=args.final_action,
             search=args.search,
             limit=args.limit,
         )
@@ -424,11 +477,41 @@ def main() -> int:
             topic=args.topic,
             cluster=args.cluster,
             meeting_date=args.meeting_date,
+            meeting_date_iso=args.meeting_date_iso,
+            motion_by=args.motion_by,
+            second_by=args.second_by,
+            final_action=args.final_action,
             search=args.search,
             limit=args.limit,
         )
         summary = generate_findings(db_path=args.db_path, filters=filters)
         print(json.dumps(summary, indent=2))
+        return 0
+
+    if args.command == "parliamentary-summary":
+        filters = QueryFilters(
+            source_id=args.source_id,
+            topic=args.topic,
+            cluster=args.cluster,
+            meeting_date=args.meeting_date,
+            meeting_date_iso=args.meeting_date_iso,
+            motion_by=args.motion_by,
+            second_by=args.second_by,
+            final_action=args.final_action,
+            search=args.search,
+            limit=args.limit,
+        )
+        items = fetch_items(db_path=args.db_path, filters=filters)
+        print(
+            json.dumps(
+                {
+                    "filters": asdict(filters),
+                    "count": len(items),
+                    "summary": summarize_parliamentary(items),
+                },
+                indent=2,
+            )
+        )
         return 0
 
     if args.command == "list-findings":
