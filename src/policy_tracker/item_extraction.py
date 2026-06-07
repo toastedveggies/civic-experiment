@@ -14,6 +14,7 @@ DEFAULT_PARSER_NAME = "la_county_cluster_text"
 LA_CITY_PRIMEGOV_HTML_PARSER = "la_city_primegov_html"
 LA_COUNTY_BOS_SOP_PARSER = "la_county_bos_sop_text"
 HOMELESSNESS_HOUSING_CLUSTER_PARSER = "la_county_homelessness_housing_cluster"
+SUPPORTING_DOCUMENT_PARSER = "supporting_document_text"
 
 SECTION_HEADER_RE = re.compile(r"^\s*((?:\d+|[IVXLC]+))\.\s+(.+?)(?::\s*.*)?\s*$", re.IGNORECASE)
 ITEM_LETTER_RE = re.compile(r"^\s*([A-Z])[\.\)]\s+(.*\S)\s*$", re.IGNORECASE)
@@ -106,7 +107,7 @@ BOS_SOP_SET_MATTER_RE = re.compile(
     re.IGNORECASE,
 )
 BOS_SOP_MOTION_RE = re.compile(
-    r"On motion of\s+(.+?),\s+seconded by\s+(.+?),\s+(?:this item was\s+|the Board\s+)(.+?)(?:\.\s*|$)",
+    r"On motion of\s+(.+?),\s+seconded by\s+(.+?),(?:\s+duly carried by the following vote,)?\s+(?:(?:this item was|the Board)\s+)?(.+?)(?:\.\s*|$)",
     re.IGNORECASE,
 )
 BOS_SOP_ACTION_RE = re.compile(
@@ -322,6 +323,8 @@ def extract_agenda_items_from_text(
 
 
 def detect_parser_name(text: str, source_path: Path | None = None) -> str:
+    if looks_like_supporting_document_path(source_path):
+        return SUPPORTING_DOCUMENT_PARSER
     if looks_like_primegov_html(text):
         return LA_CITY_PRIMEGOV_HTML_PARSER
     if looks_like_bos_sop_text(text):
@@ -350,6 +353,12 @@ def is_preferred_text_path_for_parser(path: Path, parser_name: str | None) -> bo
     return True
 
 
+def looks_like_supporting_document_path(source_path: Path | None) -> bool:
+    if source_path is None:
+        return False
+    return any(part.lower() in {"supporting_docs", "supporting-docs"} for part in source_path.parts)
+
+
 def looks_like_primegov_html(text: str) -> bool:
     return bool(PRIMEGOV_HTML_MARKER_RE.search(text))
 
@@ -364,6 +373,44 @@ def looks_like_regional_homeless_alignment(text: str) -> bool:
 
 def looks_like_homelessness_housing_cluster(text: str) -> bool:
     return bool(HOMELESSNESS_HOUSING_MARKER_RE.search(text))
+
+
+def extract_supporting_document_items(
+    text: str, source_path: Path | None = None
+) -> ExtractedAgendaDocument:
+    normalized = normalize_text(text)
+    document_role = classify_supporting_document_role(normalized, source_path)
+    cluster_name = detect_supporting_document_body_name(normalized, source_path)
+    meeting_date = detect_supporting_document_meeting_date(normalized)
+    meeting_date_iso = normalize_meeting_date_iso(meeting_date)
+    title = detect_supporting_document_title(normalized, source_path, document_role)
+    text_block = clean_text(" ".join(line.strip() for line in normalized.splitlines() if line.strip()))
+
+    item = ExtractedAgendaItem(
+        cluster_name=cluster_name,
+        meeting_date=meeting_date,
+        meeting_date_iso=meeting_date_iso,
+        section_number="DOC",
+        section_title=supporting_section_title(document_role),
+        item_label="DOC",
+        item_type=supporting_item_type(document_role),
+        title=title,
+        speakers=[],
+        text_block=text_block,
+        topic_tags=infer_topic_tags(f"{title} {text_block}"),
+        document_role=document_role,
+    )
+    enrich_generic_action_fields(item)
+
+    return ExtractedAgendaDocument(
+        source_path=str(source_path.resolve()) if source_path else "",
+        cluster_name=cluster_name,
+        meeting_date=meeting_date,
+        meeting_date_iso=meeting_date_iso,
+        item_count=1,
+        items=[item],
+        document_role=document_role,
+    )
 
 
 def extract_la_county_cluster_text_items(
@@ -1067,6 +1114,110 @@ def detect_meeting_date(text: str) -> str | None:
     return date_value
 
 
+def detect_supporting_document_meeting_date(text: str) -> str | None:
+    for pattern in (BOS_SOP_DATE_LINE_RE, REGIONAL_ALIGNMENT_DATE_RE, DATE_RE):
+        match = pattern.search(text)
+        if not match:
+            continue
+        if pattern is DATE_RE:
+            weekday = clean_text(match.group(1) or "").rstrip(",")
+            date_value = clean_text(match.group(2))
+            if weekday:
+                return clean_text(f"{weekday}, {date_value}")
+            return date_value
+        return clean_text(f"{match.group(1)}, {match.group(2)}")
+    return None
+
+
+def detect_supporting_document_body_name(text: str, source_path: Path | None) -> str | None:
+    if looks_like_regional_homeless_alignment(text):
+        body_match = REGIONAL_ALIGNMENT_BODY_RE.search(text)
+        if body_match:
+            body_name = clean_regional_alignment_body_name(body_match.group(1))
+            if body_name:
+                return body_name
+
+    supporting_body_match = re.search(
+        r"(LOS ANGELES COUNTY .*?REGIONAL HOMELESS ALIGNMENT)",
+        text,
+        re.IGNORECASE | re.DOTALL,
+    )
+    if supporting_body_match:
+        body_name = clean_text(supporting_body_match.group(1)).title()
+        if body_name:
+            return body_name
+
+    cluster_name = detect_cluster_name(text)
+    if cluster_name:
+        return cluster_name
+
+    if source_path is None:
+        return None
+
+    lowered_parts = [part.lower() for part in source_path.parts]
+    for marker in ("supporting_docs", "supporting-docs"):
+        if marker not in lowered_parts:
+            continue
+        marker_index = lowered_parts.index(marker)
+        if marker_index < 1:
+            continue
+        body_slug = source_path.parts[marker_index - 1]
+        return clean_text(body_slug.replace("-", " ").title())
+    return None
+
+
+def classify_supporting_document_role(text: str, source_path: Path | None) -> str:
+    lowered = text.lower()
+    path_lower = str(source_path).lower() if source_path else ""
+    if "statement of proceedings" in lowered or re.search(r"\b(minutes|draft minutes)\b", lowered):
+        return "minutes"
+    if re.search(r"\b(slide deck|presentation)\b", lowered):
+        return "presentation"
+    if re.search(r"\b(bylaws|charter|membership slate|meeting dates)\b", lowered):
+        return "governance_doc"
+    if "board letter" in lowered:
+        return "board_letter"
+    if "resolution" in lowered:
+        return "resolution"
+    if re.search(r"\b(agreement|amendment)\b", lowered):
+        return "agreement"
+    if "motion" in lowered:
+        return "motion"
+    if re.search(r"\b(report|spending plan|strategic plan|workplan|work plan|metrics|dashboard)\b", lowered):
+        return "report"
+    if "supporting_docs" in path_lower or "supporting-docs" in path_lower:
+        return "supporting_document"
+    return "attachment"
+
+
+def detect_supporting_document_title(text: str, source_path: Path | None, document_role: str) -> str:
+    lines = [clean_text(line) for line in text.splitlines() if clean_text(line)]
+    for line in lines[:25]:
+        lowered = line.lower()
+        if lowered.startswith(("page ", "attachments:", "public comment", "opportunity for members")):
+            continue
+        if is_meeting_boilerplate_line(line) or is_homelessness_housing_boilerplate_line(line):
+            continue
+        if document_role == "minutes" and "statement of proceedings" in lowered:
+            continue
+        if len(line) > 180:
+            continue
+        return line.strip(" -")
+
+    if source_path is None:
+        return "Supporting Document"
+    file_slug = re.sub(r"^supporting_\d+_", "", source_path.stem)
+    return clean_text(file_slug.replace("-", " ").replace("_", " ").title()) or "Supporting Document"
+
+
+def supporting_item_type(document_role: str) -> str:
+    return f"supporting_{document_role}"
+
+
+def supporting_section_title(document_role: str) -> str:
+    return clean_text(document_role.replace("_", " ").title())
+
+
 def detect_primegov_body_and_date(text: str) -> tuple[str | None, str | None]:
     heading_match = PRIMEGOV_BODY_HEADING_RE.search(text)
     if heading_match:
@@ -1536,6 +1687,8 @@ def finalize_extracted_document(
 def default_document_role_for_parser(parser_name: str) -> str:
     if parser_name == LA_COUNTY_BOS_SOP_PARSER:
         return "proceedings"
+    if parser_name == SUPPORTING_DOCUMENT_PARSER:
+        return "supporting_document"
     return "agenda"
 
 
@@ -1744,6 +1897,11 @@ _register_parser(
     HOMELESSNESS_HOUSING_CLUSTER_PARSER,
     "LA County Homelessness & Housing cluster agenda families, including policy-deputies and agenda-review formats.",
     extract_homelessness_housing_cluster_items,
+)
+_register_parser(
+    SUPPORTING_DOCUMENT_PARSER,
+    "Generic supporting documents such as minutes, reports, presentations, motions, and governance packets.",
+    extract_supporting_document_items,
 )
 _register_parser(
     LA_COUNTY_BOS_SOP_PARSER,

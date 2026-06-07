@@ -18,6 +18,7 @@ from policy_tracker.runtime_config import load_runtime_config
 from policy_tracker.source_loader import get_source_config
 
 CEO_AGENDAS_URL = "https://ceo.lacounty.gov/agendas/"
+CEO_AGENDA_DATA_URL = "https://ceo.lacounty.gov/wp-json/blade-child/v1/agenda-data"
 USER_AGENT = "policy-tracker/0.1"
 DEFAULT_SOURCE_ID = "la_county_ceo_agendas"
 
@@ -34,6 +35,32 @@ REQUESTED_BODY_NAME_MAP = {
     "LACTA Board Deputies": "LACDA Board Deputies",
     "Leadership Table for Regional Homeless Alignment": "Leadership Table for Regional Homeless Alignment",
     "Real Estate Management Commission": "Real Estate Management Commission",
+}
+
+DEPARTMENT_ABBRV_MAP = {
+    "OC": "Operations Cluster",
+    "CSC": "Community Services Cluster",
+    "FSSC": "Family and Social Services Cluster",
+    "HMHSC": "Health and Mental Health Services Cluster",
+    "PubSC": "Public Safety Cluster",
+    "WEDC": "Workforce and Economic Development Cluster",
+    "HHC": "Homelessness and Housing Cluster",
+    "457HPAC": "457 Horizons Plan Administrative Committee",
+    "AH": "Affordable Housing",
+    "AC": "Arts and Culture",
+    "CSO": "Chief Sustainability Office",
+    "CCJ": "Community Care & Justice",
+    "ECRHA": "Executive Committee for Regional Homeless Alignment",
+    "GBVC": "Gender-Based Violence Cluster",
+    "LACDABD": "LACDA Board Deputies",
+    "LTRHA": "Leadership Table for Regional Homeless Alignment",
+    "LACRIS": "LA County Regional Identification System",
+    "MALC": "Measure A Labor Council",
+    "PSPAC": "Pension Savings Plan Administrative Committee",
+    "PSC": "Permanent Steering Committee",
+    "REMC": "Real Estate Management Commission",
+    "S401kPAC": "Savings 401(k) Plan Administrative Committee",
+    "YJWG": "Youth Justice Work Group",
 }
 
 DATE_PREFIX_RE = re.compile(
@@ -152,6 +179,8 @@ def download_county_ceo_agendas(
     config_dir: Path = Path("configs/sources"),
     db_path: Path | None = None,
     download_root: Path | None = None,
+    manifest_filename: str = "ceo_last_12_months_manifest.json",
+    include_supporting_documents: bool = True,
 ) -> dict[str, Any]:
     source = get_source_config(config_dir, source_id)
     runtime = load_runtime_config()
@@ -160,8 +189,7 @@ def download_county_ceo_agendas(
     target_download_root.mkdir(parents=True, exist_ok=True)
     database_path.parent.mkdir(parents=True, exist_ok=True)
 
-    html_text = fetch_text(CEO_AGENDAS_URL)
-    sections = parse_ceo_agenda_sections(html_text)
+    sections, discovery_method = discover_ceo_agenda_sections()
     selected_links = select_requested_links(
         sections=sections,
         requested_bodies=requested_bodies,
@@ -179,21 +207,26 @@ def download_county_ceo_agendas(
             agenda = download_agenda(link, target_download_root)
             upsert_document_record(connection, source_id, agenda)
             downloaded.append(agenda)
-            agenda_supporting_documents, agenda_review_targets = download_supporting_documents_for_agenda(agenda)
+            agenda_supporting_documents: list[DownloadedCEODocument] = []
+            agenda_review_targets: list[SupportingDocumentReviewTarget] = []
+            if include_supporting_documents:
+                agenda_supporting_documents, agenda_review_targets = download_supporting_documents_for_agenda(agenda)
             for supporting_document in agenda_supporting_documents:
                 upsert_document_record(connection, source_id, supporting_document)
             supporting_documents.extend(agenda_supporting_documents)
             review_targets.extend(agenda_review_targets)
         connection.commit()
 
-    manifest_path = target_download_root / "ceo_last_12_months_manifest.json"
+    manifest_path = target_download_root / manifest_filename
     manifest_payload = {
         "source_id": source_id,
         "generated_at": datetime.now(timezone.utc).isoformat(),
+        "discovery_method": discovery_method,
         "from_date": from_date.isoformat(),
         "to_date": to_date.isoformat(),
         "requested_bodies": requested_bodies,
         "site_body_name_map": {name: REQUESTED_BODY_NAME_MAP.get(name, name) for name in requested_bodies},
+        "include_supporting_documents": include_supporting_documents,
         "agendas_downloaded": len(downloaded),
         "supporting_documents_downloaded": len(supporting_documents),
         "supporting_document_review_targets": len(review_targets),
@@ -208,6 +241,8 @@ def download_county_ceo_agendas(
         "from_date": from_date.isoformat(),
         "to_date": to_date.isoformat(),
         "requested_bodies": requested_bodies,
+        "discovery_method": discovery_method,
+        "include_supporting_documents": include_supporting_documents,
         "agendas_downloaded": len(downloaded),
         "supporting_documents_downloaded": len(supporting_documents),
         "supporting_document_review_targets": len(review_targets),
@@ -218,16 +253,157 @@ def download_county_ceo_agendas(
     }
 
 
+def backfill_downloaded_ceo_supporting_documents(
+    download_root: Path,
+    source_id: str = DEFAULT_SOURCE_ID,
+    config_dir: Path = Path("configs/sources"),
+    db_path: Path | None = None,
+    inventory_only: bool = False,
+) -> dict[str, Any]:
+    source = get_source_config(config_dir, source_id)
+    runtime = load_runtime_config()
+    database_path = db_path or runtime.database_path
+    manifest_path = download_root / "ceo_last_12_months_manifest.json"
+    agendas = load_downloaded_ceo_agendas_from_manifest(manifest_path)
+
+    supporting_documents: list[DownloadedCEODocument] = []
+    review_targets: list[SupportingDocumentReviewTarget] = []
+    agenda_count = 0
+    existing_supporting_document_count = 0
+    trusted_supporting_link_count = 0
+
+    should_write_db = db_path is not None
+    connection: sqlite3.Connection | None = None
+    try:
+        if should_write_db:
+            database_path.parent.mkdir(parents=True, exist_ok=True)
+            connection = sqlite3.connect(database_path)
+            ensure_base_schema(connection)
+            upsert_source(connection, source)
+
+        for agenda in agendas:
+            agenda_count += 1
+            existing_documents = collect_existing_supporting_documents(agenda)
+            existing_supporting_document_count += len(existing_documents)
+            trusted_supporting_link_count += len(extract_trusted_supporting_links(Path(agenda.file_path)))
+            documents: list[DownloadedCEODocument] = []
+            targets: list[SupportingDocumentReviewTarget] = []
+            if not inventory_only:
+                documents, targets = download_supporting_documents_for_agenda(agenda)
+            supporting_documents.extend(documents)
+            review_targets.extend(targets)
+            if connection is not None:
+                for document in existing_documents:
+                    upsert_document_record(connection, source_id, document)
+                for document in documents:
+                    upsert_document_record(connection, source_id, document)
+
+        if connection is not None:
+            connection.commit()
+    finally:
+        if connection is not None:
+            connection.close()
+
+    backfill_manifest_path = download_root / "ceo_supporting_docs_backfill_manifest.json"
+    payload = {
+        "source_id": source_id,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "agenda_documents_considered": agenda_count,
+        "existing_supporting_documents_found": existing_supporting_document_count,
+        "trusted_supporting_links_discovered": trusted_supporting_link_count,
+        "supporting_documents_downloaded": len(supporting_documents),
+        "review_targets": [target.to_dict() for target in review_targets],
+        "supporting_documents": [document.to_dict() for document in supporting_documents],
+        "db_path": str(database_path.resolve()) if should_write_db else None,
+        "inventory_only": inventory_only,
+    }
+    backfill_manifest_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    return {
+        "source_id": source_id,
+        "agenda_documents_considered": agenda_count,
+        "existing_supporting_documents_found": existing_supporting_document_count,
+        "trusted_supporting_links_discovered": trusted_supporting_link_count,
+        "supporting_documents_downloaded": len(supporting_documents),
+        "review_target_count": len(review_targets),
+        "manifest_path": str(backfill_manifest_path.resolve()),
+        "db_path": str(database_path.resolve()) if should_write_db else None,
+        "inventory_only": inventory_only,
+    }
+
+
 def fetch_text(url: str) -> str:
     request = Request(url, headers={"User-Agent": USER_AGENT})
     with urlopen(request) as response:
         return response.read().decode("utf-8", errors="ignore")
 
 
+def fetch_json(url: str) -> Any:
+    request = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
+    with urlopen(request) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
 def fetch_binary(url: str) -> bytes:
     request = Request(url, headers={"User-Agent": USER_AGENT})
     with urlopen(request) as response:
         return response.read()
+
+
+def discover_ceo_agenda_sections() -> tuple[dict[str, list[CEOAgendaLink]], str]:
+    try:
+        api_payload = fetch_json(CEO_AGENDA_DATA_URL)
+        sections = parse_ceo_agenda_api_sections(api_payload)
+        if sections:
+            return sections, "agenda_data_api"
+    except Exception:
+        pass
+
+    html_text = fetch_text(CEO_AGENDAS_URL)
+    return parse_ceo_agenda_sections(html_text), "static_html_fallback"
+
+
+def parse_ceo_agenda_api_sections(payload: Any) -> dict[str, list[CEOAgendaLink]]:
+    if not isinstance(payload, list):
+        return {}
+    sections: dict[str, list[CEOAgendaLink]] = {}
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        raw_date = item.get("date")
+        url = item.get("url")
+        dept_abbrv = item.get("deptAbbrv")
+        if not isinstance(raw_date, str) or not isinstance(url, str) or not isinstance(dept_abbrv, str):
+            continue
+        try:
+            agenda_date = date.fromisoformat(raw_date)
+        except ValueError:
+            continue
+        body_name = DEPARTMENT_ABBRV_MAP.get(dept_abbrv, dept_abbrv)
+        label = build_api_agenda_label(item)
+        sections.setdefault(body_name, []).append(
+            CEOAgendaLink(
+                requested_name=body_name,
+                body_name=body_name,
+                label=label,
+                agenda_date=agenda_date,
+                url=url,
+            )
+        )
+    for links in sections.values():
+        links.sort(key=lambda link: (link.agenda_date, link.body_name, link.label))
+    return sections
+
+
+def build_api_agenda_label(item: dict[str, Any]) -> str:
+    pieces = [
+        str(item.get("title") or "").strip(),
+        str(item.get("documentTitle") or "").strip(),
+    ]
+    label = " - ".join(piece for piece in pieces if piece and piece.lower() != "agenda")
+    if not label:
+        label = str(item.get("originalFileName") or "").strip()
+    return label or "Agenda"
 
 
 def fetch_resource(url: str) -> tuple[bytes, str, str]:
@@ -329,7 +505,7 @@ def download_supporting_documents_for_agenda(
     agenda_path = Path(agenda.file_path)
     meeting_dir = agenda_path.parent
     supporting_dir = meeting_dir / "supporting_docs"
-    links = extract_pdf_annotation_links(agenda_path)
+    links = extract_trusted_supporting_links(agenda_path)
     extracted_text = Path(agenda.text_path).read_text(encoding="utf-8") if agenda.text_path else ""
 
     documents: list[DownloadedCEODocument] = []
@@ -378,7 +554,7 @@ def download_supporting_documents_for_agenda(
         )
         documents.append(document)
 
-    if SUPPORTING_LABEL_RE.search(extracted_text) and not documents:
+    if SUPPORTING_LABEL_RE.search(extracted_text) and not documents and not links:
         review_targets.append(
             SupportingDocumentReviewTarget(
                 agenda_external_id=agenda.external_id,
@@ -395,7 +571,10 @@ def extract_pdf_annotation_links(path: Path) -> list[str]:
     if PdfReader is None:
         return []
 
-    reader = PdfReader(str(path))
+    try:
+        reader = PdfReader(str(path))
+    except Exception:
+        return []
     links: list[str] = []
     seen: set[str] = set()
     for page in reader.pages:
@@ -414,6 +593,10 @@ def extract_pdf_annotation_links(path: Path) -> list[str]:
             seen.add(normalized)
             links.append(normalized)
     return links
+
+
+def extract_trusted_supporting_links(path: Path) -> list[str]:
+    return [url for url in extract_pdf_annotation_links(path) if should_follow_supporting_link(url)]
 
 
 def should_follow_supporting_link(url: str) -> bool:
@@ -559,6 +742,71 @@ def materialize_supporting_document(
     )
 
 
+def collect_existing_supporting_documents(agenda: DownloadedCEODocument) -> list[DownloadedCEODocument]:
+    supporting_dir = Path(agenda.file_path).parent / "supporting_docs"
+    if not supporting_dir.exists():
+        return []
+
+    documents: list[DownloadedCEODocument] = []
+    for path in sorted(supporting_dir.iterdir()):
+        if not path.is_file():
+            continue
+        if path.suffix.lower() in {".txt", ".json"}:
+            continue
+        metadata_path = supporting_dir / f"{path.stem}.metadata.json"
+        if metadata_path.exists():
+            payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                documents.append(downloaded_ceo_document_from_dict(payload))
+                continue
+
+        documents.append(infer_existing_supporting_document(agenda, path))
+    return documents
+
+
+def infer_existing_supporting_document(agenda: DownloadedCEODocument, path: Path) -> DownloadedCEODocument:
+    suffix = path.suffix.lower()
+    mime_type = normalize_mime_type("", suffix)
+    text_candidate = path.with_suffix(".txt")
+    text_path = str(text_candidate.resolve()) if text_candidate.exists() else None
+    inferred_url = infer_supporting_document_url_from_filename(path)
+    external_id = inferred_url or str(path.resolve())
+    document = DownloadedCEODocument(
+        requested_name=agenda.requested_name,
+        body_name=agenda.body_name,
+        label=f"{agenda.label} Existing Supporting Document",
+        agenda_date=agenda.agenda_date,
+        url=inferred_url or agenda.url,
+        file_path=str(path.resolve()),
+        text_path=text_path,
+        sha256=hash_file_sha256(path),
+        bytes_downloaded=path.stat().st_size,
+        status="existing_local",
+        document_id=build_document_id(external_id),
+        external_id=external_id,
+        document_type=infer_supporting_document_type(inferred_url or "", mime_type, suffix),
+        mime_type=mime_type,
+        parent_external_id=agenda.external_id,
+    )
+    metadata_path = path.parent / f"{path.stem}.metadata.json"
+    metadata_path.write_text(json.dumps(document.to_dict(), indent=2), encoding="utf-8")
+    return document
+
+
+def infer_supporting_document_url_from_filename(path: Path) -> str | None:
+    match = re.match(r"supporting_\d+_(.+)$", path.stem, re.IGNORECASE)
+    if not match:
+        return None
+    token = match.group(1)
+    if token.isdigit() or re.fullmatch(r"POC\d{2}-\d{4}", token, re.IGNORECASE):
+        return f"https://file.lacounty.gov/SDSInter/bos/supdocs/{token}.pdf"
+    return None
+
+
+def hash_file_sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def determine_download_suffix(url: str, content_type: str) -> str:
     suffix = Path(urlparse(url).path).suffix.lower()
     if suffix in SUPPORTED_DOWNLOAD_SUFFIXES:
@@ -611,6 +859,18 @@ def upsert_document_record(
     source_id: str,
     agenda: DownloadedCEODocument,
 ) -> None:
+    existing = connection.execute(
+        """
+        SELECT document_id
+        FROM documents
+        WHERE source_id = ? AND file_path = ?
+        LIMIT 1
+        """,
+        (source_id, agenda.file_path),
+    ).fetchone()
+    if existing and existing[0] and existing[0] != agenda.document_id:
+        agenda.document_id = str(existing[0])
+
     connection.execute(
         """
         INSERT INTO documents (
@@ -684,3 +944,34 @@ def summarize_by_body(downloaded: list[DownloadedCEODocument]) -> dict[str, int]
     for agenda in downloaded:
         counts[agenda.requested_name] = counts.get(agenda.requested_name, 0) + 1
     return dict(sorted(counts.items()))
+
+
+def load_downloaded_ceo_agendas_from_manifest(manifest_path: Path) -> list[DownloadedCEODocument]:
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    documents = payload.get("documents", [])
+    agendas: list[DownloadedCEODocument] = []
+    for entry in documents:
+        if not isinstance(entry, dict):
+            continue
+        agendas.append(downloaded_ceo_document_from_dict(entry))
+    return agendas
+
+
+def downloaded_ceo_document_from_dict(payload: dict[str, Any]) -> DownloadedCEODocument:
+    return DownloadedCEODocument(
+        requested_name=str(payload.get("requested_name") or payload.get("body_name") or ""),
+        body_name=str(payload.get("body_name") or payload.get("requested_name") or ""),
+        label=str(payload.get("label") or ""),
+        agenda_date=str(payload.get("agenda_date") or payload.get("meeting_date") or ""),
+        url=str(payload.get("url") or payload.get("source_url") or payload.get("external_id") or ""),
+        file_path=str(payload.get("file_path") or ""),
+        text_path=payload.get("text_path"),
+        sha256=str(payload.get("sha256") or ""),
+        bytes_downloaded=int(payload.get("bytes_downloaded") or 0),
+        status=str(payload.get("status") or "downloaded"),
+        document_id=str(payload.get("document_id") or build_document_id(str(payload.get("external_id") or payload.get("url") or ""))),
+        external_id=str(payload.get("external_id") or payload.get("url") or ""),
+        document_type=str(payload.get("document_type") or "ceo_agenda_pdf"),
+        mime_type=str(payload.get("mime_type") or "application/pdf"),
+        parent_external_id=payload.get("parent_external_id"),
+    )

@@ -22,7 +22,8 @@ from policy_tracker.query_layer import (
     summarize_by_cluster,
     summarize_by_topic,
 )
-from policy_tracker.refresh import refresh_source
+from policy_tracker.refresh import refresh_source, refresh_supporting_documents
+from policy_tracker.la_county_ceo_import import backfill_downloaded_ceo_supporting_documents
 from policy_tracker.storage import (
     build_items_index,
     materialize_structured_document,
@@ -30,6 +31,13 @@ from policy_tracker.storage import (
     write_structured_document,
 )
 from policy_tracker.sqlite_import import backfill_structured_date_metadata, import_items_index
+from policy_tracker.source_log import (
+    activate_source,
+    check_online_source,
+    list_source_log,
+    sync_source_config_from_log,
+    validate_source_log,
+)
 from policy_tracker.source_loader import load_source_configs
 
 
@@ -52,6 +60,120 @@ def build_parser() -> argparse.ArgumentParser:
         default=Path("configs/sources"),
         type=Path,
         help="Path to source config directory.",
+    )
+
+    validate_source_log_parser = subparsers.add_parser(
+        "validate-source-log",
+        help="Validate the broad source log inventory.",
+    )
+    validate_source_log_parser.add_argument(
+        "--source-log-path",
+        default=Path("configs/source_log.yaml"),
+        type=Path,
+        help="Path to source log YAML.",
+    )
+
+    list_source_log_parser = subparsers.add_parser(
+        "list-source-log",
+        help="List public-data sources from the broad source log inventory.",
+    )
+    list_source_log_parser.add_argument(
+        "--source-log-path",
+        default=Path("configs/source_log.yaml"),
+        type=Path,
+        help="Path to source log YAML.",
+    )
+    list_source_log_parser.add_argument("--status", default=None, help="Filter by source status.")
+    list_source_log_parser.add_argument(
+        "--activation-stage",
+        default=None,
+        help="Filter by activation stage.",
+    )
+    list_source_log_parser.add_argument(
+        "--collection-role",
+        default=None,
+        help="Filter by collection role.",
+    )
+
+    sync_source_config_parser = subparsers.add_parser(
+        "sync-source-config",
+        help="Sync safe fields from a source-log entry into its active source config.",
+    )
+    sync_source_config_parser.add_argument("source_ref", help="Source reference from configs/source_log.yaml.")
+    sync_source_config_parser.add_argument(
+        "--source-log-path",
+        default=Path("configs/source_log.yaml"),
+        type=Path,
+        help="Path to source log YAML.",
+    )
+    sync_source_config_parser.add_argument(
+        "--config-dir",
+        default=Path("configs/sources"),
+        type=Path,
+        help="Path to active source config directory.",
+    )
+    sync_source_config_parser.add_argument(
+        "--write",
+        action="store_true",
+        help="Write config changes. Without this flag, only report proposed changes.",
+    )
+
+    activate_source_parser = subparsers.add_parser(
+        "activate-source",
+        help="Prepare an inventoried source for activation using source-log metadata.",
+    )
+    activate_source_parser.add_argument("source_ref", help="Source reference from configs/source_log.yaml.")
+    activate_source_parser.add_argument(
+        "--source-log-path",
+        default=Path("configs/source_log.yaml"),
+        type=Path,
+        help="Path to source log YAML.",
+    )
+    activate_source_parser.add_argument(
+        "--config-dir",
+        default=Path("configs/sources"),
+        type=Path,
+        help="Path to active source config directory.",
+    )
+    activate_source_parser.add_argument(
+        "--write",
+        action="store_true",
+        help="Create local directories and write safe config updates.",
+    )
+
+    check_online_source_parser = subparsers.add_parser(
+        "check-online-source",
+        help="Run a web/API-first source check from the source log.",
+    )
+    check_online_source_parser.add_argument("source_ref", help="Source reference from configs/source_log.yaml.")
+    check_online_source_parser.add_argument(
+        "--source-log-path",
+        default=Path("configs/source_log.yaml"),
+        type=Path,
+        help="Path to source log YAML.",
+    )
+    check_online_source_parser.add_argument(
+        "--config-dir",
+        default=Path("configs/sources"),
+        type=Path,
+        help="Path to active source config directory.",
+    )
+    check_online_source_parser.add_argument(
+        "--state-dir",
+        default=Path("local/state"),
+        type=Path,
+        help="Directory for refresh-state tracking files.",
+    )
+    check_online_source_parser.add_argument("--db-path", type=Path, default=None, help="Optional SQLite path.")
+    check_online_source_parser.add_argument(
+        "--skip-findings",
+        action="store_true",
+        help="Import new items without regenerating source findings.",
+    )
+    check_online_source_parser.add_argument(
+        "--download-only",
+        action="store_true",
+        help="Download/register artifacts without running the refresh parser/import step.",
     )
 
     inspect_parser = subparsers.add_parser(
@@ -190,6 +312,39 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional SQLite path. Defaults to the runtime-configured database path.",
     )
 
+    backfill_ceo_supporting_parser = subparsers.add_parser(
+        "backfill-ceo-supporting-docs",
+        help="Crawl already-downloaded County CEO agenda PDFs for supporting-document links and materialize them.",
+    )
+    backfill_ceo_supporting_parser.add_argument(
+        "--download-root",
+        type=Path,
+        default=Path("local/downloads/la_county_ceo_agendas"),
+        help="County CEO source download root containing ceo_last_12_months_manifest.json.",
+    )
+    backfill_ceo_supporting_parser.add_argument(
+        "--config-dir",
+        default=Path("configs/sources"),
+        type=Path,
+        help="Path to source config directory.",
+    )
+    backfill_ceo_supporting_parser.add_argument(
+        "--db-path",
+        type=Path,
+        default=None,
+        help="Optional SQLite path. If omitted, only files/manifests are written and documents are not upserted.",
+    )
+    backfill_ceo_supporting_parser.add_argument(
+        "--source-id",
+        default="la_county_ceo_agendas",
+        help="Source id to use for optional SQLite upserts.",
+    )
+    backfill_ceo_supporting_parser.add_argument(
+        "--inventory-only",
+        action="store_true",
+        help="Audit existing agenda PDFs and local supporting_docs folders without fetching new supporting documents.",
+    )
+
     list_parser = subparsers.add_parser(
         "list-items",
         help="Query structured agenda items from SQLite in a UI-friendly JSON format.",
@@ -303,6 +458,36 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum number of source rows to consider when regenerating findings.",
     )
 
+    refresh_supporting_parser = subparsers.add_parser(
+        "refresh-supporting-docs",
+        help="Scan a source download root for supporting-document text artifacts, then structure and import them.",
+    )
+    refresh_supporting_parser.add_argument("source_id", help="Source id from the source registry.")
+    refresh_supporting_parser.add_argument(
+        "--config-dir",
+        default=Path("configs/sources"),
+        type=Path,
+        help="Path to source config directory.",
+    )
+    refresh_supporting_parser.add_argument(
+        "--state-dir",
+        default=Path("local/state"),
+        type=Path,
+        help="Directory for refresh-state tracking files.",
+    )
+    refresh_supporting_parser.add_argument("--db-path", type=Path, default=None, help="Optional SQLite path.")
+    refresh_supporting_parser.add_argument(
+        "--skip-findings",
+        action="store_true",
+        help="Import new supporting documents without regenerating source findings.",
+    )
+    refresh_supporting_parser.add_argument(
+        "--findings-limit",
+        type=int,
+        default=10000,
+        help="Maximum number of source rows to consider when regenerating findings.",
+    )
+
     return parser
 
 
@@ -324,6 +509,70 @@ def main() -> int:
     if args.command == "list-sources":
         for config in load_source_configs(args.config_dir):
             print(config.source_id)
+        return 0
+
+    if args.command == "validate-source-log":
+        summary = validate_source_log(args.source_log_path)
+        print(json.dumps(summary.to_dict(), indent=2))
+        return 0 if summary.valid else 1
+
+    if args.command == "list-source-log":
+        print(
+            json.dumps(
+                list_source_log(
+                    args.source_log_path,
+                    status=args.status,
+                    activation_stage=args.activation_stage,
+                    collection_role=args.collection_role,
+                ),
+                indent=2,
+            )
+        )
+        return 0
+
+    if args.command == "sync-source-config":
+        print(
+            json.dumps(
+                sync_source_config_from_log(
+                    args.source_ref,
+                    path=args.source_log_path,
+                    config_dir=args.config_dir,
+                    write=args.write,
+                ),
+                indent=2,
+            )
+        )
+        return 0
+
+    if args.command == "activate-source":
+        print(
+            json.dumps(
+                activate_source(
+                    args.source_ref,
+                    path=args.source_log_path,
+                    config_dir=args.config_dir,
+                    write=args.write,
+                ),
+                indent=2,
+            )
+        )
+        return 0
+
+    if args.command == "check-online-source":
+        print(
+            json.dumps(
+                check_online_source(
+                    args.source_ref,
+                    path=args.source_log_path,
+                    config_dir=args.config_dir,
+                    state_dir=args.state_dir,
+                    db_path=args.db_path,
+                    skip_findings=args.skip_findings,
+                    download_only=args.download_only,
+                ),
+                indent=2,
+            )
+        )
         return 0
 
     if args.command == "inspect-gmail-message":
@@ -419,6 +668,17 @@ def main() -> int:
 
     if args.command == "backfill-structured-dates":
         summary = backfill_structured_date_metadata(db_path=args.db_path)
+        print(json.dumps(summary, indent=2))
+        return 0
+
+    if args.command == "backfill-ceo-supporting-docs":
+        summary = backfill_downloaded_ceo_supporting_documents(
+            download_root=args.download_root,
+            source_id=args.source_id,
+            config_dir=args.config_dir,
+            db_path=args.db_path,
+            inventory_only=args.inventory_only,
+        )
         print(json.dumps(summary, indent=2))
         return 0
 
@@ -539,6 +799,18 @@ def main() -> int:
 
     if args.command == "refresh-source":
         summary = refresh_source(
+            source_id=args.source_id,
+            config_dir=args.config_dir,
+            state_dir=args.state_dir,
+            db_path=args.db_path,
+            skip_findings=args.skip_findings,
+            findings_limit=args.findings_limit,
+        )
+        print(json.dumps(summary, indent=2))
+        return 0
+
+    if args.command == "refresh-supporting-docs":
+        summary = refresh_supporting_documents(
             source_id=args.source_id,
             config_dir=args.config_dir,
             state_dir=args.state_dir,

@@ -311,8 +311,75 @@ class ItemExtractionTests(unittest.TestCase):
         self.assertEqual(document.item_count, 1)
         self.assertEqual(document.items[0].title, "Measure A Implementation")
 
+    def test_extracts_supporting_document_minutes_with_role_and_votes(self) -> None:
+        sample_text = """
+        Friday, February 13, 2026
+        DRAFT STATEMENT OF PROCEEDINGS
+        FOR THE SPECIAL MEETING OF THE
+        LOS ANGELES COUNTY EXECUTIVE COMMITTEE FOR
+        REGIONAL HOMELESS ALIGNMENT
+
+        3. Approval of the December 12, 2025, ECRHA Special Meeting Minutes.
+        On motion of Member Lindsey P. Horvath, seconded by Member Hafsa Kaka, duly carried by the following vote, this item was approved:
+        Ayes: Board Member Lindsey P. Horvath, Board Member Hafsa Kaka
+        Absent: Board Member Kathryn Barger
+        """
+        path = self._write_temp_supporting_fixture(
+            "supporting_001_minutes.txt",
+            sample_text,
+            body_slug="executive-committee-for-regional-homeless-alignment",
+        )
+        document = extract_agenda_items_from_text_path(path)
+
+        self.assertEqual(document.document_role, "minutes")
+        self.assertEqual(
+            document.cluster_name,
+            "Los Angeles County Executive Committee For Regional Homeless Alignment",
+        )
+        self.assertEqual(document.meeting_date_iso, "2026-02-13")
+        self.assertEqual(document.items[0].document_role, "minutes")
+        self.assertEqual(document.items[0].motion_by, "Member Lindsey P. Horvath")
+        self.assertEqual(document.items[0].second_by, "Member Hafsa Kaka")
+        self.assertEqual(document.items[0].final_action, "approved")
+
+    def test_extracts_supporting_document_governance_doc_role(self) -> None:
+        sample_text = """
+        LEADERSHIP TABLE
+        LTRHA Membership:
+        Update & Recommendations
+        Membership Subcommittee
+        In order to facilitate a fair and transparent process to fill vacant seats, the LTRHA Bylaws specify:
+        """
+        path = self._write_temp_supporting_fixture(
+            "supporting_007_214150.txt",
+            sample_text,
+            body_slug="leadership-table-for-regional-homeless-alignment",
+        )
+        document = extract_agenda_items_from_text_path(path)
+
+        self.assertEqual(document.document_role, "governance_doc")
+        self.assertEqual(
+            document.cluster_name,
+            "Leadership Table For Regional Homeless Alignment",
+        )
+        self.assertEqual(document.items[0].item_type, "supporting_governance_doc")
+
     def _write_temp_fixture(self, name: str, content: str) -> Path:
         tmp_dir = self.repo_root / "local" / "tmp_item_extraction_tests"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        path = tmp_dir / name
+        path.write_text(content.strip(), encoding="utf-8")
+        return path
+
+    def _write_temp_supporting_fixture(self, name: str, content: str, body_slug: str) -> Path:
+        tmp_dir = (
+            self.repo_root
+            / "local"
+            / "tmp_item_extraction_tests"
+            / "2026-01-01"
+            / body_slug
+            / "supporting_docs"
+        )
         tmp_dir.mkdir(parents=True, exist_ok=True)
         path = tmp_dir / name
         path.write_text(content.strip(), encoding="utf-8")

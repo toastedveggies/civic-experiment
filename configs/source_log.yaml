@@ -1,0 +1,651 @@
+version: 1
+updated_at: 2026-06-02
+purpose: >
+  Inventory public-sector bodies and the online locations where agenda,
+  minutes, proceedings, staff-report, and supporting-document materials can be
+  found. This log is broader than active ingestion configs: it includes primary
+  sources, backstops, candidate sources, and notes for future onboarding.
+  It is also intended as an agent-readable activation queue: future runs should
+  be able to inspect this file, find sources marked ready_for_activation, and
+  scaffold or run the matching ingestion path.
+
+source_status_values:
+  - active
+  - candidate
+  - backstop
+  - deprecated
+  - needs_review
+
+collection_role_values:
+  - primary
+  - secondary
+  - alert_backstop
+  - historical_backfill
+  - reference_only
+
+activation_stage_values:
+  - discovered
+  - inventoried
+  - sampled
+  - ready_for_activation
+  - active
+  - blocked
+  - retired
+
+source_shape_values:
+  - public_api
+  - static_html
+  - javascript_app
+  - document_portal
+  - rss_or_feed
+  - email_notice
+  - pdf_archive
+  - search_index
+  - manual_upload
+
+artifact_type_values:
+  - agenda
+  - agenda_packet
+  - minutes
+  - statement_of_proceedings
+  - staff_report
+  - board_letter
+  - motion
+  - ordinance
+  - resolution
+  - contract
+  - budget_document
+  - presentation
+  - public_comment
+  - cancellation_notice
+  - supplemental_agenda
+
+access_model_values:
+  - public_anonymous
+  - public_with_session
+  - email_subscription
+  - api_key_required
+  - login_required
+  - manual_only
+
+storage_priority_values:
+  - canonical
+  - companion
+  - supporting
+  - low_value
+  - metadata_only
+
+activation_queue:
+  - source_ref: la_city_primegov_archive
+    desired_action: Build incremental online check using archived meetings API.
+    priority: high
+    owner_note: Primary replacement for Gmail-first LA City agenda refresh.
+  - source_ref: la_county_bos_live_agenda_page
+    desired_action: Build current-agenda page crawler and supporting-document expansion.
+    priority: high
+    owner_note: Needed for current BOS agenda packets beyond SOP historical backfill.
+  - source_ref: lahsa_document_library
+    desired_action: Inventory LAHSA document scopes and identify agenda/minutes-bearing document types.
+    priority: medium
+    owner_note: Regional homelessness source; promote only after agenda-bearing scopes are confirmed.
+
+bodies:
+  - body_id: la_city_council
+    body_name: Los Angeles City Council
+    jurisdiction: Los Angeles
+    government_level: city
+    parent_body_id: null
+    issue_tags:
+      - housing
+      - homelessness
+      - land_use
+      - public_safety
+      - city_budget
+    sources:
+      - source_ref: la_city_primegov_archive
+        collection_role: primary
+      - source_ref: la_city_clerk_listserv_gmail
+        collection_role: alert_backstop
+
+  - body_id: la_county_board_of_supervisors
+    body_name: Los Angeles County Board of Supervisors
+    jurisdiction: Los Angeles County
+    government_level: county
+    parent_body_id: null
+    issue_tags:
+      - homelessness
+      - housing
+      - anti_poverty
+      - policing
+      - jails
+      - probation
+      - public_safety
+      - county_budget
+    sources:
+      - source_ref: la_county_bos_statement_of_proceedings
+        collection_role: historical_backfill
+      - source_ref: la_county_bos_live_agenda_page
+        collection_role: secondary
+      - source_ref: la_county_govdelivery_board_gmail
+        collection_role: alert_backstop
+
+  - body_id: la_county_ceo_clusters_and_commissions
+    body_name: Los Angeles County CEO clusters and commissions
+    jurisdiction: Los Angeles County
+    government_level: county
+    parent_body_id: la_county_board_of_supervisors
+    issue_tags:
+      - homelessness
+      - housing
+      - anti_poverty
+      - public_safety
+      - county_governance
+    sources:
+      - source_ref: la_county_ceo_agendas_archive
+        collection_role: primary
+
+  - body_id: lahsa
+    body_name: Los Angeles Homeless Services Authority
+    jurisdiction: Los Angeles County and City of Los Angeles
+    government_level: regional
+    parent_body_id: null
+    issue_tags:
+      - homelessness
+      - housing
+      - continuum_of_care
+      - public_budget
+      - service_contracts
+    sources:
+      - source_ref: lahsa_document_library
+        collection_role: primary
+
+sources:
+  - source_ref: la_city_primegov_archive
+    source_name: LA City PrimeGov archive and meeting portal
+    current_source_id: la_city_agendas
+    status: active
+    activation_stage: active
+    collection_role: primary
+    source_type: web_api_and_portal
+    source_shape:
+      - public_api
+      - javascript_app
+      - document_portal
+    access_model: public_anonymous
+    public_urls:
+      - label: PrimeGov portal
+        url: https://lacity.primegov.com/
+      - label: PrimeGov public portal mirror
+        url: https://portal-lacity.primegov.com/
+      - label: Archived meetings API
+        url: https://lacity.primegov.com/api/v2/PublicPortal/ListArchivedMeetingsByDate
+    local_download_root: local/downloads/la_city_agendas
+    parser: la_city_primegov_html
+    adapter_candidate: la_city_primegov_online
+    schedule:
+      cadence: daily
+      preferred_time_local: "06:00"
+      timezone: America/Los_Angeles
+      lookback_days: 14
+    freshness:
+      last_known_successful_import: 2026-06-02
+      latest_imported_meeting_date: 2026-05-29
+      last_failure: null
+    known_document_types:
+      - agenda_html
+      - agenda_pdf
+      - cancellation_notice
+    artifact_types:
+      - agenda
+      - supplemental_agenda
+      - cancellation_notice
+    storage_policy:
+      canonical_artifact: agenda_html
+      companion_artifacts:
+        - agenda_pdf
+      low_value_artifacts:
+        - cancellation_notice
+      dedupe_keys:
+        - meetingTemplateId
+        - sha256
+        - source_url
+    provenance_fields:
+      - source_url
+      - meetingTemplateId
+      - meeting_date
+      - body_name
+      - fetched_at
+      - sha256
+    activation_checks:
+      - Fetch recent archived meetings API response.
+      - Select target committees and agenda templates.
+      - Download canonical HTML or PDF agenda.
+      - Extract text and verify item count greater than zero for non-cancellation agendas.
+      - Import into runtime SQLite and verify latest meeting date advances.
+    current_notes: >
+      Best primary source for LA City agenda checks. Existing backfill script
+      calls the archived meetings API and downloads selected City Council and
+      Housing/Homelessness Committee agenda documents. Gmail Clerk notices are
+      useful as alerts and for meeting-template links.
+    gaps:
+      - Source config currently has base_url null even though PrimeGov URLs are known.
+      - Need a routine incremental online check separate from Gmail notices.
+
+  - source_ref: la_city_clerk_listserv_gmail
+    source_name: LA City Clerk listserv agenda notices in Gmail
+    current_source_id: la_city_agendas
+    status: active
+    activation_stage: active
+    collection_role: alert_backstop
+    source_type: gmail_notice
+    source_shape:
+      - email_notice
+    access_model: email_subscription
+    public_urls:
+      - label: Council agenda subscription page
+        url: https://www.lacity.org/your-government/council-votes/subscribe-council-meeting-agendas
+    gmail_query: subject:(agenda OR agendas) (from:cityofla.org OR from:lacity.org) -in:trash -in:spam
+    local_download_root: local/downloads/la_city_agendas
+    parser: la_city_primegov_html
+    adapter_candidate: la_city_gmail
+    schedule:
+      cadence: daily
+      preferred_time_local: "06:15"
+      timezone: America/Los_Angeles
+      lookback_days: 7
+    freshness:
+      last_known_successful_import: 2026-06-01
+      latest_imported_meeting_date: 2026-05-27
+      last_failure: null
+    known_document_types:
+      - email_notice_html
+      - primegov_meeting_link
+    artifact_types:
+      - agenda
+      - cancellation_notice
+      - supplemental_agenda
+    storage_policy:
+      canonical_artifact: linked_primegov_agenda
+      companion_artifacts:
+        - email_notice_html
+      low_value_artifacts:
+        - cancellation_notice
+      dedupe_keys:
+        - gmail_message_id
+        - primegov_meeting_template_id
+    provenance_fields:
+      - gmail_message_id
+      - sender
+      - recipients
+      - subject
+      - email_ts
+      - attachment_filename
+      - primegov_url
+    current_notes: >
+      Useful for fresh alerts, continuation agendas, cancellations, and source
+      provenance. Should not be the only LA City ingestion path.
+    gaps:
+      - Depends on connected mailbox and listserv delivery.
+
+  - source_ref: la_county_bos_live_agenda_page
+    source_name: LA County BOS live board meeting agenda page
+    current_source_id: la_county_board_agendas
+    status: needs_review
+    activation_stage: sampled
+    collection_role: secondary
+    source_type: website
+    source_shape:
+      - javascript_app
+      - document_portal
+    access_model: public_anonymous
+    public_urls:
+      - label: Board meeting agendas
+        url: https://bos.lacounty.gov/board-meeting-agendas/
+    local_download_root: local/downloads/la_county_board_agendas
+    parser: lacounty_govdelivery_email
+    adapter_candidate: la_county_bos_current_page
+    schedule:
+      cadence: daily
+      preferred_time_local: "06:30"
+      timezone: America/Los_Angeles
+      lookback_days: 120
+    freshness:
+      last_known_successful_import: null
+      latest_imported_meeting_date: 2026-05-20
+      last_failure: Download-only current check succeeds; structured refresh is blocked by unregistered/page-inappropriate parser lacounty_govdelivery_email.
+    known_document_types:
+      - board_agenda_page
+      - agenda_packet_pdf
+      - supporting_document_pdf
+    artifact_types:
+      - agenda
+      - agenda_packet
+      - board_letter
+      - motion
+      - public_comment
+      - supplemental_agenda
+    storage_policy:
+      canonical_artifact: board_agenda_page_or_packet
+      companion_artifacts:
+        - direct_pdf_link
+      supporting_artifacts:
+        - board_letter
+        - motion
+        - public_comment
+      dedupe_keys:
+        - meeting_date
+        - source_url
+        - sha256
+    provenance_fields:
+      - source_url
+      - meeting_date
+      - agenda_page_url
+      - linked_document_url
+      - fetched_at
+      - sha256
+    activation_checks:
+      - Fetch live page and identify current meeting records.
+      - Resolve linked agenda packet and supporting documents.
+      - Save page metadata and direct PDFs with source URLs.
+      - Verify parser choice is page-aware, not only Gmail-email-aware.
+    current_notes: >
+      Live page is a Nuxt app with server-rendered agenda cards and direct
+      links to current HTML and PDF agenda artifacts. The existing snapshot
+      parser can read the live HTML, so the current check can download agenda
+      artifacts without browser automation. It remains a short rolling window
+      and is not reliable as the sole historical source.
+    gaps:
+      - Parser/source config is still Gmail-oriented rather than page-oriented.
+      - Supporting-document expansion beyond listed agenda/supplemental links still needs design.
+
+  - source_ref: la_county_govdelivery_board_gmail
+    source_name: LA County GovDelivery board agenda notices in Gmail
+    current_source_id: la_county_board_agendas
+    status: active
+    activation_stage: active
+    collection_role: alert_backstop
+    source_type: gmail_notice
+    source_shape:
+      - email_notice
+    access_model: email_subscription
+    public_urls:
+      - label: Board meeting agendas
+        url: https://bos.lacounty.gov/board-meeting-agendas/
+    gmail_query: from:(lacounty@subscriptions.lacounty.gov OR BOSEXEC@subscriptions.lacounty.gov) ("Cluster Meeting Agendas" OR "Agenda for the Board Meeting" OR "Supplemental Agenda" OR "Agenda Spotlight") -in:trash -in:spam
+    local_download_root: local/downloads/la_county_board_agendas
+    parser: lacounty_govdelivery_email
+    adapter_candidate: la_county_gmail
+    schedule:
+      cadence: daily
+      preferred_time_local: "06:45"
+      timezone: America/Los_Angeles
+      lookback_days: 7
+    freshness:
+      last_known_successful_import: null
+      latest_imported_meeting_date: 2026-05-20
+      last_failure: Full source-specific ingestion path is not complete.
+    known_document_types:
+      - govdelivery_email
+      - agenda_page_link
+      - direct_pdf_link
+    artifact_types:
+      - agenda
+      - agenda_packet
+      - supplemental_agenda
+    storage_policy:
+      canonical_artifact: linked_agenda_or_packet
+      companion_artifacts:
+        - govdelivery_email
+      dedupe_keys:
+        - gmail_message_id
+        - resolved_url
+        - sha256
+    provenance_fields:
+      - gmail_message_id
+      - subject
+      - sender
+      - email_ts
+      - original_url
+      - resolved_url
+    current_notes: >
+      Strong alert source for Board agendas, supplemental agendas, agenda
+      spotlights, and cluster meeting agenda links. Keep as a backstop while
+      building direct web checks.
+    gaps:
+      - Mailbox dependency.
+      - Full source-specific ingestion is less complete than LA City.
+
+  - source_ref: la_county_bos_statement_of_proceedings
+    source_name: LA County BOS Statement of Proceedings archive
+    current_source_id: la_county_bos_sop
+    status: active
+    activation_stage: active
+    collection_role: historical_backfill
+    source_type: web_archive
+    source_shape:
+      - search_index
+      - pdf_archive
+    access_model: public_anonymous
+    public_urls:
+      - label: Statement of Proceedings landing page
+        url: https://lacounty.gov/government/board-of-supervisors/statement-of-proceedings/
+    local_download_root: local/downloads/la_county_bos_sop
+    parser: la_county_bos_sop_text
+    adapter_candidate: la_county_bos_sop_archive
+    schedule:
+      cadence: weekly
+      preferred_time_local: "07:00"
+      timezone: America/Los_Angeles
+      lookback_days: 30
+    freshness:
+      last_known_successful_import: 2026-05-26
+      latest_imported_meeting_date: 2026-05-06
+      last_failure: null
+    known_document_types:
+      - statement_of_proceedings_pdf
+    artifact_types:
+      - statement_of_proceedings
+      - minutes
+    storage_policy:
+      canonical_artifact: statement_of_proceedings_pdf
+      dedupe_keys:
+        - portal_document_id
+        - meeting_date
+        - sha256
+    provenance_fields:
+      - source_url
+      - portal_document_id
+      - meeting_date
+      - fetched_at
+      - sha256
+    current_notes: >
+      Preferred BOS historical source because it is more repeatable than the
+      live board agenda page for backfill.
+    gaps:
+      - Proceedings are outcomes, not a full substitute for agenda packets and supporting docs.
+
+  - source_ref: la_county_ceo_agendas_archive
+    source_name: LA County CEO agenda archive
+    current_source_id: la_county_ceo_agendas
+    status: active
+    activation_stage: active
+    collection_role: primary
+    source_type: web_archive
+    source_shape:
+      - public_api
+      - static_html
+      - pdf_archive
+    access_model: public_anonymous
+    public_urls:
+      - label: CEO agendas
+        url: https://ceo.lacounty.gov/agendas/
+      - label: CEO agenda data API
+        url: https://ceo.lacounty.gov/wp-json/blade-child/v1/agenda-data
+    local_download_root: local/downloads/la_county_ceo_agendas
+    parser: la_county_cluster_text
+    adapter_candidate: la_county_ceo_agendas_archive
+    tracked_body_names:
+      - Community Services Cluster
+      - Operations Cluster
+      - Family and Social Services Cluster
+      - Health and Mental Health Services Cluster
+      - Public Safety Cluster
+      - Homelessness and Housing Cluster
+      - Affordable Housing
+      - Community Care and Justice
+      - Executive Committee for Regional Homeless Alignment
+      - LACTA Board Deputies
+      - Leadership Table for Regional Homeless Alignment
+      - Real Estate Management Commission
+    schedule:
+      cadence: daily
+      preferred_time_local: "07:15"
+      timezone: America/Los_Angeles
+      lookback_days: 30
+      lookahead_days: 14
+    freshness:
+      last_known_successful_import: 2026-06-02
+      latest_imported_meeting_date: 2026-06-03
+      last_failure: null
+    known_document_types:
+      - cluster_agenda_pdf
+      - commission_agenda_pdf
+      - cancellation_notice_pdf
+      - supporting_document_pdf
+    artifact_types:
+      - agenda
+      - agenda_packet
+      - minutes
+      - cancellation_notice
+      - supporting_document
+    storage_policy:
+      canonical_artifact: agenda_pdf
+      supporting_artifacts:
+        - supporting_document_pdf
+      low_value_artifacts:
+        - cancellation_notice_pdf
+      daily_check_scope:
+        - agenda_pdf
+      backfill_scope:
+        - supporting_document_pdf
+      dedupe_keys:
+        - source_url
+        - meeting_date
+        - body_name
+        - sha256
+    provenance_fields:
+      - documentId
+      - source_url
+      - meeting_date
+      - body_name
+      - fetched_at
+      - sha256
+    activation_checks:
+      - Fetch the agenda-data API and verify it returns current agenda records.
+      - Map department abbreviations to canonical body names.
+      - Download selected agenda PDFs into the source download root.
+      - Extract PDF text and verify canonical agenda candidates refresh.
+      - Preserve supporting-document review targets separately from canonical agendas.
+    current_notes: >
+      Strong direct web source for cluster and commission agendas. The live
+      website now renders agenda rows through the agenda-data API rather than
+      static h4 sections, so the scraper should prefer that API and keep static
+      HTML parsing as fallback. Daily checks should be agenda-first; supporting
+      documents should run as a separate backfill/review workflow.
+    gaps:
+      - Some commission and packet variants still need parser-family expansion.
+      - Supporting-document ingestion is valuable but too slow to couple to every daily agenda check.
+
+  - source_ref: lahsa_document_library
+    source_name: LAHSA document library
+    current_source_id: lahsa_documents
+    status: active
+    activation_stage: active
+    collection_role: primary
+    source_type: document_library
+    source_shape:
+      - document_portal
+      - static_html
+    access_model: public_anonymous
+    public_urls:
+      - label: Document library
+        url: https://www.lahsa.org/documents
+      - label: Finance scope
+        url: https://www.lahsa.org/documents?scope=106
+      - label: Policy scope
+        url: https://www.lahsa.org/documents?scope=107
+    local_download_root: local/downloads/lahsa_documents
+    parser: supporting_document_text
+    adapter_candidate: lahsa_document_library
+    tracked_scope_ids:
+      - 106
+      - 107
+    tracked_keywords:
+      - agenda
+      - minutes
+      - commission
+      - board
+      - budget
+      - policy
+      - governance
+    max_documents_per_scope: 20
+    schedule:
+      cadence: weekly
+      preferred_time_local: "07:45"
+      timezone: America/Los_Angeles
+      lookback_days: 30
+    freshness:
+      last_known_successful_import: 2026-06-03
+      latest_imported_meeting_date: 2025-12-10
+      last_failure: null
+    known_document_types:
+      - budget_document
+      - report
+      - form
+      - training_material
+      - policy_document
+    artifact_types:
+      - budget_document
+      - staff_report
+      - presentation
+      - contract
+    storage_policy:
+      canonical_artifact: document_pdf
+      dedupe_keys:
+        - lahsa_document_id
+        - source_url
+        - sha256
+      metadata_fields:
+        - document_type
+        - project
+        - project_scope
+        - published_date
+        - last_modified
+    provenance_fields:
+      - lahsa_document_id
+      - source_url
+      - download_url
+      - document_type
+      - project_scope
+      - published_date
+      - last_modified
+      - fetched_at
+      - sha256
+    activation_checks:
+      - Crawl document-library scope pages and record scope names and IDs.
+      - Sample detail pages and parse JSON-LD, direct download URL, document type, project scope, published date, and last-modified date.
+      - Search or filter for Commission, agenda, minutes, budget, and policy document types.
+      - Promote agenda-bearing subsets into dedicated active source entries before scheduled ingestion.
+    current_notes: >
+      LAHSA exposes an ASP.NET WebForms document library with scope pages and
+      stable detail/download URLs. Detail pages include JSON-LD plus explicit
+      metadata fields such as document type, project scope, published date, and
+      last modified date. The first active pass tracks Finance and Policy scope
+      pages with agenda/minutes/commission/board/budget/policy/governance
+      keywords so the pipeline can gather public-budget and governance material
+      without pulling the entire library. First production run downloaded and
+      structured 16 visible Finance/Policy documents with zero fetch failures.
+    gaps:
+      - Need identify whether agendas/minutes are first-class document types or only searchable titles.
+      - Current crawler reads visible scope-page results; WebForms pagination and postback filters still need expansion.
+      - Supporting-document parser is generic; raw document published dates are reliable, but structured dates can reflect dates found inside the document text.

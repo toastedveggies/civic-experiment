@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from policy_tracker.findings import generate_findings
-from policy_tracker.item_extraction import is_preferred_text_path_for_parser
+from policy_tracker.item_extraction import SUPPORTING_DOCUMENT_PARSER, is_preferred_text_path_for_parser
 from policy_tracker.models import SourceConfig
 from policy_tracker.query_layer import QueryFilters
 from policy_tracker.source_loader import get_source_config
@@ -100,6 +101,78 @@ def refresh_source(
     return summary
 
 
+def refresh_supporting_documents(
+    source_id: str,
+    config_dir: Path,
+    state_dir: Path,
+    db_path: Path | None = None,
+    skip_findings: bool = False,
+    findings_limit: int = 10000,
+) -> dict[str, Any]:
+    source = get_source_config(config_dir, source_id)
+    download_root = get_download_root(source)
+    structured_dir = get_structured_output_dir(source) / "supporting_documents"
+    state_path = get_state_path(state_dir, f"{source_id}.supporting")
+    known_files = load_refresh_state(state_path)
+    text_paths = discover_supporting_text_paths(source)
+    changed_paths = select_changed_paths(text_paths, known_files)
+
+    summary: dict[str, Any] = {
+        "source_id": source_id,
+        "download_root": str(download_root),
+        "structured_output_dir": str(structured_dir),
+        "supporting_text_files_discovered": len(text_paths),
+        "new_or_changed_supporting_text_files": len(changed_paths),
+        "documents_written": 0,
+        "items_written": 0,
+        "import_summary": None,
+        "findings_summary": None,
+        "state_path": str(state_path),
+    }
+
+    if not changed_paths:
+        return summary
+
+    raw_documents_by_text_path = load_raw_document_metadata_by_text_path(source_id, db_path)
+    documents = []
+    for path in changed_paths:
+        raw_metadata = raw_documents_by_text_path.get(str(path.resolve()))
+        documents.append(
+            materialize_structured_document(
+                path,
+                parser_name=SUPPORTING_DOCUMENT_PARSER,
+                source_document_id=raw_metadata["document_id"] if raw_metadata else None,
+            )
+        )
+
+    documents = [document for document in documents if document.item_count > 0]
+    structured_dir.mkdir(parents=True, exist_ok=True)
+    for document in documents:
+        source_name = Path(document.source_path).stem
+        output_path = structured_dir / f"{source_name}.structured.json"
+        write_structured_document(document, output_path)
+
+    rows = build_items_index(documents)
+    index_path = structured_dir / "supporting_documents.latest_refresh.index.json"
+    write_items_index(rows, index_path)
+    import_summary = import_items_index(index_path=index_path, db_path=db_path, source_id=source_id)
+
+    findings_summary = None
+    if not skip_findings:
+        findings_summary = generate_findings(
+            db_path=db_path,
+            filters=QueryFilters(source_id=source_id, limit=findings_limit),
+        )
+
+    update_refresh_state(state_path, known_files, changed_paths)
+
+    summary["documents_written"] = len(documents)
+    summary["items_written"] = len(rows)
+    summary["import_summary"] = import_summary
+    summary["findings_summary"] = findings_summary
+    return summary
+
+
 def get_download_root(source: SourceConfig) -> Path:
     return Path(source.download_root or "local/downloads")
 
@@ -136,6 +209,22 @@ def discover_text_paths(source: SourceConfig) -> tuple[list[Path], dict[str, Any
     }
 
 
+def discover_supporting_text_paths(source: SourceConfig) -> list[Path]:
+    download_root = get_download_root(source)
+    if not download_root.exists():
+        return []
+    included: list[Path] = []
+    for path in sorted(download_root.rglob("*.txt")):
+        if not path.is_file():
+            continue
+        if is_cancellation_notice_path(path):
+            continue
+        if not is_supporting_material_path(path):
+            continue
+        included.append(path)
+    return included
+
+
 def classify_text_path_for_refresh(source: SourceConfig, path: Path) -> RefreshScreenDecision:
     if is_cancellation_notice_path(path):
         return RefreshScreenDecision(include=False, reason="cancellation_notice")
@@ -153,6 +242,40 @@ def is_cancellation_notice_path(path: Path) -> bool:
 
 def is_supporting_material_path(path: Path) -> bool:
     return any(part.lower() in {"supporting_docs", "supporting-docs"} for part in path.parts)
+
+
+def load_raw_document_metadata_by_text_path(
+    source_id: str,
+    db_path: Path | None,
+) -> dict[str, dict[str, str]]:
+    if db_path is None:
+        return {}
+    database_path = db_path
+    if not database_path.exists():
+        return {}
+
+    with sqlite3.connect(database_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT document_id, text_path, file_path, meeting_date, body_name, document_type
+            FROM documents
+            WHERE source_id = ?
+              AND text_path IS NOT NULL
+              AND TRIM(text_path) <> ''
+            """,
+            (source_id,),
+        ).fetchall()
+
+    metadata: dict[str, dict[str, str]] = {}
+    for document_id, text_path, file_path, meeting_date, body_name, document_type in rows:
+        metadata[str(Path(text_path).resolve())] = {
+            "document_id": document_id,
+            "file_path": file_path or "",
+            "meeting_date": meeting_date or "",
+            "body_name": body_name or "",
+            "document_type": document_type or "",
+        }
+    return metadata
 
 
 def select_changed_paths(paths: list[Path], known_files: dict[str, RefreshFileState]) -> list[Path]:

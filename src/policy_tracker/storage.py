@@ -96,17 +96,23 @@ def build_meeting_id(
 
 
 def materialize_structured_document(
-    source_path: Path, parser_name: str | None = None
+    source_path: Path,
+    parser_name: str | None = None,
+    source_document_id: str | None = None,
+    meeting_id: str | None = None,
+    document_role: str | None = None,
 ) -> StoredAgendaDocument:
     extracted = extract_agenda_items_from_text_path(source_path, parser_name=parser_name)
     document_id = build_document_id(source_path)
     source_namespace = parser_name or "default"
-    meeting_id = build_meeting_id(
+    resolved_meeting_id = meeting_id or build_meeting_id(
         source_namespace=source_namespace,
         cluster_name=extracted.cluster_name,
         meeting_date_iso=extracted.meeting_date_iso,
         source_path=extracted.source_path,
     )
+    resolved_document_role = document_role or extracted.document_role or "agenda"
+    resolved_source_document_id = source_document_id or extracted.source_document_id
     items = [
         StoredAgendaItem(
             agenda_item_id=build_agenda_item_id(document_id, item.item_label, item.title),
@@ -115,9 +121,9 @@ def materialize_structured_document(
             cluster_name=item.cluster_name,
             meeting_date=item.meeting_date,
             meeting_date_iso=item.meeting_date_iso,
-            source_document_id=item.source_document_id,
-            meeting_id=item.meeting_id or meeting_id,
-            document_role=item.document_role or extracted.document_role or "agenda",
+            source_document_id=item.source_document_id or resolved_source_document_id,
+            meeting_id=item.meeting_id or resolved_meeting_id,
+            document_role=item.document_role or resolved_document_role,
             section_number=item.section_number,
             section_title=item.section_title,
             item_label=item.item_label,
@@ -148,9 +154,9 @@ def materialize_structured_document(
         cluster_name=extracted.cluster_name,
         meeting_date=extracted.meeting_date,
         meeting_date_iso=extracted.meeting_date_iso,
-        source_document_id=extracted.source_document_id,
-        meeting_id=extracted.meeting_id or meeting_id,
-        document_role=extracted.document_role or "agenda",
+        source_document_id=resolved_source_document_id,
+        meeting_id=extracted.meeting_id or resolved_meeting_id,
+        document_role=resolved_document_role,
         item_count=len(items),
         items=items,
     )

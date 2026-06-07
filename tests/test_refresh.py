@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from policy_tracker.refresh import classify_text_path_for_refresh, refresh_source
+from policy_tracker.refresh import classify_text_path_for_refresh, refresh_source, refresh_supporting_documents
 from policy_tracker.source_loader import get_source_config
 
 
@@ -122,6 +122,81 @@ class RefreshSourceTests(unittest.TestCase):
         decision = classify_text_path_for_refresh(source, path)
         self.assertFalse(decision.include)
         self.assertEqual(decision.reason, "supporting_material")
+
+    def test_refresh_supporting_documents_imports_supporting_text(self) -> None:
+        tmp_dir = self.repo_root / "local" / "tmp_refresh_supporting_test"
+        try:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            download_root = tmp_dir / "downloads"
+            structured_root = tmp_dir / "structured"
+            state_root = tmp_dir / "state"
+            db_path = tmp_dir / "refresh.sqlite"
+            config_dir = tmp_dir / "configs"
+            config_dir.mkdir(parents=True, exist_ok=True)
+
+            source_dir = (
+                download_root
+                / "ceo"
+                / "2026-03-26"
+                / "leadership-table-for-regional-homeless-alignment"
+                / "supporting_docs"
+            )
+            source_dir.mkdir(parents=True, exist_ok=True)
+            copied_text = source_dir / "supporting_001.txt"
+            copied_text.write_text(
+                "Leadership Table\nLTRHA Membership Update\nLTRHA Bylaws specify fair and transparent process.",
+                encoding="utf-8",
+            )
+
+            config_path = config_dir / "test_supporting_source.yaml"
+            config_path.write_text(
+                textwrap.dedent(
+                    f"""
+                    source_id: test_supporting_source
+                    source_name: Test Supporting Source
+                    jurisdiction: Test
+                    government_level: county
+                    body_name: Test Body
+                    source_type: hybrid
+                    collection_method: filesystem
+                    priority_level: high
+                    status: active
+                    download_root: {download_root}
+                    structured_output_dir: {structured_root}
+                    """
+                ).strip(),
+                encoding="utf-8",
+            )
+
+            with (
+                patch(
+                    "policy_tracker.refresh.import_items_index",
+                    return_value={"documents_imported": 1, "items_imported": 1, "topics_imported": 1},
+                ) as import_mock,
+                patch(
+                    "policy_tracker.refresh.generate_findings",
+                    return_value={"items_considered": 1, "findings_written": 1, "high_priority_findings": 0},
+                ) as findings_mock,
+            ):
+                summary = refresh_supporting_documents(
+                    source_id="test_supporting_source",
+                    config_dir=config_dir,
+                    state_dir=state_root,
+                    db_path=db_path,
+                    findings_limit=100,
+                )
+
+            self.assertEqual(summary["new_or_changed_supporting_text_files"], 1)
+            self.assertEqual(summary["documents_written"], 1)
+            self.assertEqual(summary["items_written"], 1)
+            self.assertEqual(import_mock.call_count, 1)
+            self.assertEqual(findings_mock.call_count, 1)
+            self.assertTrue((structured_root / "supporting_documents" / "supporting_001.structured.json").exists())
+            self.assertTrue(
+                (structured_root / "supporting_documents" / "supporting_documents.latest_refresh.index.json").exists()
+            )
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":

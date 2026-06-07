@@ -19,6 +19,7 @@ from policy_tracker.source_loader import get_source_config
 
 WAYBACK_CDX_URL = "https://web.archive.org/cdx/search/cdx"
 WAYBACK_SNAPSHOT_URL = "https://web.archive.org/web/{timestamp}id_/https://bos.lacounty.gov/board-meeting-agendas/"
+BOS_LIVE_AGENDAS_URL = "https://bos.lacounty.gov/board-meeting-agendas/"
 USER_AGENT = "policy-tracker/0.1"
 DEFAULT_SOURCE_ID = "la_county_board_agendas"
 
@@ -128,6 +129,70 @@ def download_bos_agendas_last_year(
     }
 
 
+def download_bos_current_agendas(
+    from_date: date,
+    to_date: date,
+    source_id: str = DEFAULT_SOURCE_ID,
+    config_dir: Path = Path("configs/sources"),
+    db_path: Path | None = None,
+    download_root: Path | None = None,
+    manifest_filename: str = "bos_current_manifest.json",
+) -> dict[str, Any]:
+    source = get_source_config(config_dir, source_id)
+    runtime = load_runtime_config()
+    target_download_root = download_root or Path(source.download_root or "local/downloads/la_county_board_agendas")
+    database_path = db_path or runtime.database_path
+    target_download_root.mkdir(parents=True, exist_ok=True)
+    database_path.parent.mkdir(parents=True, exist_ok=True)
+
+    meeting_links = collect_links_from_live_page(from_date, to_date)
+
+    downloaded: list[BOSAgendaDocument] = []
+    with sqlite3.connect(database_path) as connection:
+        ensure_base_schema(connection)
+        upsert_source(connection, source)
+        for meeting_date_text, meeting_name, agenda_label, url in meeting_links:
+            try:
+                document = download_agenda_document(
+                    meeting_date_text=meeting_date_text,
+                    meeting_name=meeting_name,
+                    agenda_label=agenda_label,
+                    url=url,
+                    download_root=target_download_root,
+                )
+            except URLError:
+                continue
+            upsert_document_record(connection, source_id, document)
+            downloaded.append(document)
+        connection.commit()
+
+    manifest_path = target_download_root / manifest_filename
+    manifest = {
+        "source_id": source_id,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "from_date": from_date.isoformat(),
+        "to_date": to_date.isoformat(),
+        "discovery_method": "live_bos_agenda_page",
+        "source_url": BOS_LIVE_AGENDAS_URL,
+        "documents_downloaded": len(downloaded),
+        "by_meeting_date": summarize_by_meeting_date(downloaded),
+        "documents": [item.to_dict() for item in downloaded],
+    }
+    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    return {
+        "source_id": source_id,
+        "from_date": from_date.isoformat(),
+        "to_date": to_date.isoformat(),
+        "discovery_method": "live_bos_agenda_page",
+        "documents_discovered": len(meeting_links),
+        "documents_downloaded": len(downloaded),
+        "download_root": str(target_download_root.resolve()),
+        "database_path": str(database_path.resolve()),
+        "manifest_path": str(manifest_path.resolve()),
+        "by_meeting_date": summarize_by_meeting_date(downloaded),
+    }
+
+
 def fetch_wayback_timestamps(from_date: date, to_date: date) -> list[str]:
     query = (
         f"{WAYBACK_CDX_URL}?url=https://bos.lacounty.gov/board-meeting-agendas/"
@@ -164,6 +229,17 @@ def collect_links_from_snapshots(
             if not (from_date <= meeting_date <= to_date):
                 continue
             collected.setdefault(url, (meeting_date_text, meeting_name, agenda_label, url))
+    return sorted(collected.values(), key=lambda item: (item[0], item[1], item[2], item[3]))
+
+
+def collect_links_from_live_page(from_date: date, to_date: date) -> list[tuple[str, str, str, str]]:
+    html_text = fetch_text(BOS_LIVE_AGENDAS_URL)
+    collected: dict[str, tuple[str, str, str, str]] = {}
+    for meeting_date_text, meeting_name, agenda_label, url in parse_snapshot_links(html_text):
+        meeting_date = datetime.strptime(meeting_date_text, "%Y-%m-%d").date()
+        if not (from_date <= meeting_date <= to_date):
+            continue
+        collected.setdefault(url, (meeting_date_text, meeting_name, agenda_label, url))
     return sorted(collected.values(), key=lambda item: (item[0], item[1], item[2], item[3]))
 
 

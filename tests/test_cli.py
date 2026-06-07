@@ -20,6 +20,35 @@ class CliTests(unittest.TestCase):
         args = parser.parse_args(["list-sources", "--config-dir", str(Path("configs"))])
         self.assertEqual(args.command, "list-sources")
 
+    def test_validate_source_log_command_is_registered(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["validate-source-log"])
+        self.assertEqual(args.command, "validate-source-log")
+
+    def test_list_source_log_command_accepts_filters(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["list-source-log", "--activation-stage", "active"])
+        self.assertEqual(args.command, "list-source-log")
+        self.assertEqual(args.activation_stage, "active")
+
+    def test_sync_source_config_command_is_registered(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["sync-source-config", "la_city_primegov_archive", "--write"])
+        self.assertEqual(args.command, "sync-source-config")
+        self.assertTrue(args.write)
+
+    def test_activate_source_command_is_registered(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["activate-source", "la_city_primegov_archive"])
+        self.assertEqual(args.command, "activate-source")
+
+    def test_check_online_source_command_is_registered(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["check-online-source", "la_city_primegov_archive", "--skip-findings", "--download-only"])
+        self.assertEqual(args.command, "check-online-source")
+        self.assertTrue(args.skip_findings)
+        self.assertTrue(args.download_only)
+
     def test_list_parsers_command_is_registered(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["list-parsers"])
@@ -77,6 +106,12 @@ class CliTests(unittest.TestCase):
         )
         self.assertEqual(args.command, "import-structured-items")
 
+    def test_backfill_ceo_supporting_docs_command_is_registered(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["backfill-ceo-supporting-docs", "--inventory-only"])
+        self.assertEqual(args.command, "backfill-ceo-supporting-docs")
+        self.assertTrue(args.inventory_only)
+
     def test_list_items_command_is_registered(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["list-items", "--source-id", "la_county_board_agendas", "--topic", "housing"])
@@ -101,6 +136,11 @@ class CliTests(unittest.TestCase):
         parser = build_parser()
         args = parser.parse_args(["refresh-source", "la_county_board_agendas"])
         self.assertEqual(args.command, "refresh-source")
+
+    def test_refresh_supporting_docs_command_is_registered(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["refresh-supporting-docs", "la_county_ceo_agendas"])
+        self.assertEqual(args.command, "refresh-supporting-docs")
 
 
 if __name__ == "__main__":

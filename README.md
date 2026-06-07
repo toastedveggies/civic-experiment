@@ -4,7 +4,7 @@ Policy Tracker is a local-first document intelligence system for tracking agenda
 
 The repo started with Los Angeles County agenda materials, and now also includes a real City of Los Angeles intake path. The architecture is designed so we can keep adding new agenda families and jurisdictions without rebuilding the pipeline each time.
 
-The intended end-state is a system that harvests agenda emails and linked supporting documents from your Gmail on a schedule, archives them locally, and analyzes them for both current developments and trends over time.
+The intended end-state is a system that harvests agenda emails and linked supporting documents from your Gmail on a schedule, archives them locally, and analyzes them for both current developments and trends over time. The next product surface is a dashboard that shows source health, latest agendas, failures, findings, and issue-level insights without requiring manual CLI queries or repeated prompting.
 
 ## What This Repo Contains
 
@@ -31,6 +31,8 @@ The intended end-state is a system that harvests agenda emails and linked suppor
 - SQLite storage for documents, agenda items, findings, evidence, and trendlines
 - staged AI analysis pipeline for current-item review and longitudinal trend tracking
 - weekly digest and batch memo outputs
+- local operator dashboard for source health, agenda coverage, review queues, and findings
+- longer-term tiered analytics product with issue lenses, historical context, risk analysis, and connected workflows
 
 ## Repo Layout
 
@@ -109,6 +111,7 @@ For the best current handoff docs, see:
 
 - [docs/build-status.md](/C:/Users/ramor/OneDrive/Documents/GitHub/civic-experiment/docs/build-status.md)
 - [docs/product-plan.md](/C:/Users/ramor/OneDrive/Documents/GitHub/civic-experiment/docs/product-plan.md)
+- [docs/dashboard-product-plan.md](/C:/Users/ramor/OneDrive/Documents/GitHub/civic-experiment/docs/dashboard-product-plan.md)
 - [docs/item-extraction.md](/C:/Users/ramor/OneDrive/Documents/GitHub/civic-experiment/docs/item-extraction.md)
 - [docs/issue-scanning.md](/C:/Users/ramor/OneDrive/Documents/GitHub/civic-experiment/docs/issue-scanning.md)
 - [docs/meeting-centric-model.md](/C:/Users/ramor/OneDrive/Documents/GitHub/civic-experiment/docs/meeting-centric-model.md)

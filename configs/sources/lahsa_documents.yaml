@@ -1,0 +1,29 @@
+source_id: lahsa_documents
+source_name: LAHSA Document Library
+jurisdiction: Los Angeles County and City of Los Angeles
+government_level: regional
+body_name: Los Angeles Homeless Services Authority
+source_type: document_library
+collection_method: website_document_library_scrape
+base_url: https://www.lahsa.org/documents
+email_sender_patterns: []
+attachment_patterns: []
+meeting_frequency: weekly
+priority_level: medium
+status: active
+adapter: lahsa_document_library
+parser: supporting_document_text
+gmail_query: null
+download_root: local/downloads/lahsa_documents
+structured_output_dir: local/structured/lahsa_documents
+tags:
+  - homelessness
+  - housing
+  - continuum_of_care
+  - public_budget
+  - service_contracts
+notes: >
+  Public LAHSA document library. This source is initially run as focused
+  document-library ingestion for Finance and Policy materials, not as a clean
+  agenda-only feed. Detail pages expose JSON-LD, document type, project scope,
+  published date, last-modified date, and direct item.ashx download URLs.

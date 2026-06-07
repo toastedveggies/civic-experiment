@@ -33,6 +33,8 @@
 - support longitudinal queries and richer weekly summaries
 - add item-level findings generation
 - add priority scoring and policy-significance ranking
+- add issue-lens summaries that connect agenda items, findings, actors, and historical context
+- add confidence and coverage indicators so analysis reflects parser/source completeness
 
 ## Phase 3: Additional Jurisdictions
 
@@ -40,10 +42,27 @@
 - validate multi-jurisdiction assumptions
 - add source-specific adapters without changing core pipeline
 
-## Phase 4: Operational Hardening
+## Phase 4: Dashboard And Operator Visibility
+
+- dashboard summary query functions over SQLite
+- source-health and parser-coverage views
+- latest agenda/proceeding dates by source
+- retry and manual-review queue visibility
+- recent items and findings explorer
+- local read API for dashboard data
+- internal local dashboard prototype
+
+## Phase 5: Operational Hardening
 
 - scheduled local jobs
 - reprocessing workflows
 - data quality checks
 - migration path toward always-on local deployment
-- lightweight local API for future visual interface
+- durable refresh-run records for dashboard status and audit trails
+
+## Phase 6: Productization
+
+- free public-awareness tier with basic agenda and item visibility
+- pro analyst tier with issue lenses, history, risk scoring, and exports
+- team tier with saved monitors, shared review state, custom sources, and integrations
+- authentication, billing, and account-level data boundaries after the local dashboard proves the value

@@ -7,7 +7,7 @@ source_type: hybrid
 collection_method: gmail_attachment_or_link
 priority_level: high
 status: active
-base_url: null
+base_url: https://lacity.primegov.com/
 email_sender_patterns:
   - Clerk.LSadmin@lacity.org
 attachment_patterns:

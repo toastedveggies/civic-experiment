@@ -1,8 +1,14 @@
 # Source Registry
 
-Each YAML file in this directory describes one tracked source.
+Each YAML file in this directory describes one active or near-active ingestion
+source.
 
 The registry is meant to be stable across ingestion and analysis changes. Adapters should read source config rather than hard-code source behavior into the broader pipeline.
+
+For the broader inventory of public bodies and all known online locations, use
+`configs/source_log.yaml`. The source log is intentionally wider than this
+directory: it can include candidate sources, backstops, historical archives,
+public APIs, and listserv sources before they are ready for pipeline ingestion.
 
 ## Required Fields
 
