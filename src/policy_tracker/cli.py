@@ -5,6 +5,8 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
+from policy_tracker.dashboard import build_dashboard_summary
+from policy_tracker.dashboard_server import serve_dashboard
 from policy_tracker.downloader import download_assessed_message_targets, write_manifest
 from policy_tracker.findings import (
     FindingFilters,
@@ -50,6 +52,48 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser("about", help="Show a short project description.")
     subparsers.add_parser("list-parsers", help="List registered agenda parser families.")
+
+    dashboard_parser = subparsers.add_parser(
+        "dashboard-summary",
+        help="Show local dashboard KPIs, source health, recent agendas, queues, and findings.",
+    )
+    dashboard_parser.add_argument("--db-path", type=Path, default=None, help="Optional SQLite path.")
+    dashboard_parser.add_argument(
+        "--config-dir",
+        default=Path("configs/sources"),
+        type=Path,
+        help="Path to source config directory.",
+    )
+    dashboard_parser.add_argument(
+        "--state-dir",
+        default=Path("local/state"),
+        type=Path,
+        help="Directory for refresh-state tracking files.",
+    )
+    serve_dashboard_parser = subparsers.add_parser(
+        "serve-dashboard",
+        help="Serve the local Policy Tracker dashboard UI and read API.",
+    )
+    serve_dashboard_parser.add_argument("--host", default="127.0.0.1", help="Bind host.")
+    serve_dashboard_parser.add_argument("--port", type=int, default=8765, help="Bind port.")
+    serve_dashboard_parser.add_argument("--db-path", type=Path, default=None, help="Optional SQLite path.")
+    serve_dashboard_parser.add_argument(
+        "--config-dir",
+        default=Path("configs/sources"),
+        type=Path,
+        help="Path to source config directory.",
+    )
+    serve_dashboard_parser.add_argument(
+        "--state-dir",
+        default=Path("local/state"),
+        type=Path,
+        help="Directory for refresh-state tracking files.",
+    )
+    serve_dashboard_parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress request logging.",
+    )
 
     sources_parser = subparsers.add_parser(
         "list-sources",
@@ -504,6 +548,30 @@ def main() -> int:
 
     if args.command == "list-parsers":
         print(json.dumps({"parsers": list_parsers()}, indent=2))
+        return 0
+
+    if args.command == "dashboard-summary":
+        print(
+            json.dumps(
+                build_dashboard_summary(
+                    db_path=args.db_path,
+                    config_dir=args.config_dir,
+                    state_dir=args.state_dir,
+                ),
+                indent=2,
+            )
+        )
+        return 0
+
+    if args.command == "serve-dashboard":
+        serve_dashboard(
+            host=args.host,
+            port=args.port,
+            db_path=args.db_path,
+            config_dir=args.config_dir,
+            state_dir=args.state_dir,
+            quiet=args.quiet,
+        )
         return 0
 
     if args.command == "list-sources":

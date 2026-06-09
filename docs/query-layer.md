@@ -19,6 +19,7 @@ That makes it easier to reuse the same code for:
 
 - `policy-tracker list-items`
 - `policy-tracker weekly-digest`
+- `policy-tracker dashboard-summary`
 
 ## Current Filters
 
@@ -42,6 +43,15 @@ That makes it easier to reuse the same code for:
 
 - JSON digest, or
 - Markdown digest
+
+`dashboard-summary` returns JSON with:
+
+- top-level database KPIs
+- source health rows
+- latest agenda/proceeding dates
+- retry and manual-review queue counts
+- recent agenda documents
+- high-priority findings preview
 
 ## Next UI-Friendly Step
 

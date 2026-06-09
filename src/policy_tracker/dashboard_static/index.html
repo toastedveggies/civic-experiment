@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Policy Tracker Dashboard</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">Policy Tracker</p>
+        <h1>Source Operations</h1>
+      </div>
+      <div class="header-actions">
+        <span id="refresh-status" class="status-pill">Loading</span>
+        <button id="refresh-button" type="button" title="Refresh dashboard">Refresh</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="kpi-grid" aria-label="Dashboard indicators">
+        <article class="metric"><span>Sources</span><strong id="metric-sources">-</strong></article>
+        <article class="metric"><span>Documents</span><strong id="metric-documents">-</strong></article>
+        <article class="metric"><span>Items</span><strong id="metric-items">-</strong></article>
+        <article class="metric"><span>Findings</span><strong id="metric-findings">-</strong></article>
+        <article class="metric warning"><span>Retries</span><strong id="metric-retries">-</strong></article>
+        <article class="metric danger"><span>Warnings</span><strong id="metric-warnings">-</strong></article>
+      </section>
+
+      <section class="split-layout">
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Source Health</h2>
+            <span id="source-count" class="muted"></span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Source</th>
+                  <th>Status</th>
+                  <th>Latest Agenda</th>
+                  <th>Docs</th>
+                  <th>Items</th>
+                  <th>Findings</th>
+                  <th>Queue</th>
+                </tr>
+              </thead>
+              <tbody id="sources-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <aside class="panel">
+          <div class="panel-header">
+            <h2>Review Queue</h2>
+          </div>
+          <div id="queue-list" class="queue-list"></div>
+        </aside>
+      </section>
+
+      <section class="split-layout lower">
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Recent Agendas</h2>
+          </div>
+          <div id="agenda-list" class="agenda-list"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Priority Findings</h2>
+          </div>
+          <div id="findings-list" class="findings-list"></div>
+        </div>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

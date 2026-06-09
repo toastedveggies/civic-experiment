@@ -54,6 +54,18 @@ class CliTests(unittest.TestCase):
         args = parser.parse_args(["list-parsers"])
         self.assertEqual(args.command, "list-parsers")
 
+    def test_dashboard_summary_command_is_registered(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["dashboard-summary", "--db-path", "local/policy_tracker.sqlite"])
+        self.assertEqual(args.command, "dashboard-summary")
+
+    def test_serve_dashboard_command_is_registered(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["serve-dashboard", "--port", "8766", "--quiet"])
+        self.assertEqual(args.command, "serve-dashboard")
+        self.assertEqual(args.port, 8766)
+        self.assertTrue(args.quiet)
+
     def test_inspect_gmail_message_command_is_registered(self) -> None:
         parser = build_parser()
         args = parser.parse_args(
